@@ -23,9 +23,9 @@ class TestTokenHandler:
         assert handler.model_config.max_context == 256000
     
     def test_init_custom_model(self):
-        handler = TokenHandler("moonshot-v1-128k")
-        assert handler.model == "moonshot-v1-128k"
-        assert handler.model_config.max_context == 128000
+        handler = TokenHandler("kimi-k2-0905-preview")
+        assert handler.model == "kimi-k2-0905-preview"
+        assert handler.model_config.max_context == 256000
     
     def test_estimate_tokens_empty(self):
         handler = TokenHandler()
@@ -84,9 +84,9 @@ class TestTokenHandler:
         assert handler.fits_in_context(small_text) is True
     
     def test_fits_in_context_large(self):
-        handler = TokenHandler("moonshot-v1-32k")
-        # Create text that exceeds 32k context
-        large_text = "x" * 200000
+        handler = TokenHandler("kimi-k2-turbo-preview")
+        # Create text that exceeds 256k context (need ~1M chars)
+        large_text = "x" * 1500000
         assert handler.fits_in_context(large_text) is False
     
     def test_max_diff_tokens(self):

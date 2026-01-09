@@ -48,29 +48,14 @@ KIMI_MODELS = {
         max_context=256000,
         max_output=8192,
         tier=ModelTier.PRIMARY,
-        description="Kimi K2 high-speed version"
-    ),
-    "moonshot-v1-128k": ModelConfig(
-        name="moonshot-v1-128k",
-        max_context=128000,
-        max_output=4096,
-        tier=ModelTier.FALLBACK,
-        description="Moonshot 128K fallback model"
-    ),
-    "moonshot-v1-32k": ModelConfig(
-        name="moonshot-v1-32k",
-        max_context=32000,
-        max_output=4096,
-        tier=ModelTier.FALLBACK,
-        description="Moonshot 32K lightweight model"
+        description="Kimi K2 high-speed version (recommended)"
     ),
 }
 
-# Fallback chain: primary -> fallback models
+# No fallback needed - K2 models have 256K context
+# If diff is too large, use intelligent chunking instead
 FALLBACK_CHAIN = [
     "kimi-k2-turbo-preview",
-    "moonshot-v1-128k",
-    "moonshot-v1-32k",
 ]
 
 

@@ -243,10 +243,8 @@ Skills are automatically triggered based on PR code content.
 |-------|---------|-------|
 | `kimi-k2-turbo-preview` | 256K | Fast, recommended for daily use |
 | `kimi-k2-0905-preview` | 256K | Latest K2, most capable |
-| `moonshot-v1-128k` | 128K | Fallback model |
-| `moonshot-v1-32k` | 32K | Lightweight fallback |
 
-The action automatically selects appropriate model when PR is too large.
+When PR is too large, the action uses intelligent chunking to prioritize important files.
 
 ## Review Categories
 
