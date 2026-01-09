@@ -1,0 +1,54 @@
+name: 'Kimi Code Review'
+description: 'AI-powered code review using Kimi (Moonshot AI) - supports /review, /describe, /improve, /ask commands'
+author: 'xiaoju'
+branding:
+  icon: 'code'
+  color: 'blue'
+
+inputs:
+  kimi_api_key:
+    description: 'Kimi API Key from Moonshot AI'
+    required: true
+  github_token:
+    description: 'GitHub Token for PR operations'
+    required: true
+  language:
+    description: 'Response language (en-US, zh-CN)'
+    required: false
+    default: 'en-US'
+  model:
+    description: 'Kimi model to use (kimi-k2-turbo-preview, kimi-k2-0905-preview, kimi-k2-thinking, kimi-k2-thinking-turbo)'
+    required: false
+    default: 'kimi-k2-turbo-preview'
+  review_level:
+    description: 'Review strictness (strict, normal, gentle)'
+    required: false
+    default: 'normal'
+  max_files:
+    description: 'Maximum number of files to review'
+    required: false
+    default: '10'
+  exclude_patterns:
+    description: 'File patterns to exclude (comma-separated)'
+    required: false
+    default: '*.lock,*.min.js,*.min.css'
+  auto_review:
+    description: 'Auto review on PR open/sync'
+    required: false
+    default: 'true'
+  auto_describe:
+    description: 'Auto generate PR description on open'
+    required: false
+    default: 'false'
+  auto_improve:
+    description: 'Auto suggest improvements on PR open/sync'
+    required: false
+    default: 'false'
+
+outputs:
+  review_comment:
+    description: 'The review comment posted to the PR'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

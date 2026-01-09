@@ -1,0 +1,54 @@
+# =============================================================================
+# Kimi Actions Configuration
+# =============================================================================
+# Copy this file to your project root and rename to .kimi-config.yml
+# =============================================================================
+
+# Enable/disable Kimi Actions (default: true)
+enabled: true
+
+# =============================================================================
+# Category Toggles
+# =============================================================================
+categories:
+  bug: true           # Code defects
+  performance: true   # Performance issues
+  security: true      # Security vulnerabilities
+
+# =============================================================================
+# Skill Overrides
+# =============================================================================
+# Replace built-in skills with your custom skills from .kimi/skills/
+#
+# skill_overrides:
+#   code-review: my-company-review
+#
+# Built-in skill names: code-review, describe, improve, ask
+
+# =============================================================================
+# Ignore Files
+# =============================================================================
+ignore_files:
+  - "*.test.ts"
+  - "*.spec.ts"
+  - "**/__mocks__/**"
+  - "**/__fixtures__/**"
+
+# =============================================================================
+# Extra Instructions
+# =============================================================================
+extra_instructions: |
+  Focus on code maintainability.
+
+# =============================================================================
+# Custom Skills (Claude Skills Standard)
+# =============================================================================
+# Create .kimi/skills/ directory in your repo:
+#
+# .kimi/skills/
+# ├── react-review/
+# │   ├── SKILL.md           # Required
+# │   ├── scripts/           # Optional
+# │   └── references/        # Optional
+# └── company-rules/
+#     └── SKILL.md
