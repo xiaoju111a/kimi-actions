@@ -60,16 +60,16 @@ class RepoConfig:
     enabled: bool = True
     ignore_files: List[str] = field(default_factory=list)
     extra_instructions: str = ""
-    
+
     # Category toggles
     enable_bug: bool = True
     enable_performance: bool = True
     enable_security: bool = True
-    
+
     # Skill overrides: map built-in skill name to custom skill name
     # Custom skills must exist in .kimi/skills/ directory
     skill_overrides: Dict[str, str] = field(default_factory=dict)
-    
+
     # Validation errors/warnings
     validation_errors: List[str] = field(default_factory=list)
     validation_warnings: List[str] = field(default_factory=list)
@@ -91,9 +91,9 @@ def validate_config(data: dict) -> ConfigValidationResult:
     """
     errors = []
     warnings = []
-    
+
     # Check top-level keys
-    valid_keys = {"enabled", "categories", "skill_overrides", 
+    valid_keys = {"enabled", "categories", "skill_overrides",
                   "ignore_files", "extra_instructions"}
     unknown_keys = set(data.keys()) - valid_keys
     if unknown_keys:
@@ -107,11 +107,11 @@ def validate_config(data: dict) -> ConfigValidationResult:
             unknown_keys.remove("skills")
         if unknown_keys:
             warnings.append(f"Unknown config keys: {', '.join(unknown_keys)}")
-    
+
     # Validate 'enabled'
     if "enabled" in data and not isinstance(data["enabled"], bool):
         errors.append("'enabled' must be a boolean")
-    
+
     # Validate 'categories'
     if "categories" in data:
         categories = data["categories"]
@@ -124,7 +124,7 @@ def validate_config(data: dict) -> ConfigValidationResult:
                     warnings.append(f"Unknown category: '{key}'")
                 if not isinstance(value, bool):
                     errors.append(f"Category '{key}' must be a boolean")
-    
+
     # Validate 'skill_overrides'
     if "skill_overrides" in data:
         overrides = data["skill_overrides"]
@@ -139,7 +139,7 @@ def validate_config(data: dict) -> ConfigValidationResult:
                     )
                 if not isinstance(custom_name, str) or not custom_name:
                     errors.append(f"skill_overrides['{builtin_name}'] must be a non-empty string")
-    
+
     # Validate 'ignore_files'
     if "ignore_files" in data:
         ignore_files = data["ignore_files"]
@@ -147,12 +147,12 @@ def validate_config(data: dict) -> ConfigValidationResult:
             errors.append("'ignore_files' must be an array")
         elif not all(isinstance(f, str) for f in ignore_files):
             errors.append("'ignore_files' must contain only strings")
-    
+
     # Validate 'extra_instructions'
     if "extra_instructions" in data:
         if not isinstance(data["extra_instructions"], str):
             errors.append("'extra_instructions' must be a string")
-    
+
     return ConfigValidationResult(
         valid=len(errors) == 0,
         errors=errors,
@@ -174,38 +174,38 @@ def parse_repo_config(content: str) -> Tuple[RepoConfig, ConfigValidationResult]
             errors=[f"YAML parse error: {e}"]
         )
         return RepoConfig(), result
-    
+
     # Validate first
     validation = validate_config(data)
-    
+
     # Log validation issues
     for error in validation.errors:
         logger.error(f"Config error: {error}")
     for warning in validation.warnings:
         logger.warning(f"Config warning: {warning}")
-    
+
     # Parse even if there are warnings (but not if there are errors)
     config = RepoConfig()
     config.validation_errors = validation.errors
     config.validation_warnings = validation.warnings
-    
+
     if not validation.valid:
         return config, validation
-    
+
     config.enabled = data.get("enabled", True)
-    
+
     # Category toggles
     categories = data.get("categories", {})
     config.enable_bug = categories.get("bug", True)
     config.enable_performance = categories.get("performance", True)
     config.enable_security = categories.get("security", True)
-    
+
     # Skill overrides
     config.skill_overrides = data.get("skill_overrides", {})
-    
+
     config.ignore_files = data.get("ignore_files", [])
     config.extra_instructions = data.get("extra_instructions", "")
-    
+
     return config, validation
 
 
@@ -217,7 +217,7 @@ def load_repo_config(github_client, repo_name: str, ref: str = None) -> Tuple[Re
     """
     try:
         repo = github_client.client.get_repo(repo_name)
-        
+
         for filename in [".kimi-config.yml", ".kimi-config.yaml"]:
             try:
                 content = repo.get_contents(filename, ref=ref)
@@ -226,10 +226,10 @@ def load_repo_config(github_client, repo_name: str, ref: str = None) -> Tuple[Re
                 return parse_repo_config(config_content)
             except Exception:
                 continue
-        
+
         logger.debug("No .kimi-config.yml found")
         return RepoConfig(), ConfigValidationResult(valid=True)
-    
+
     except Exception as e:
         logger.warning(f"Failed to load repo config: {e}")
         return RepoConfig(), ConfigValidationResult(valid=True)

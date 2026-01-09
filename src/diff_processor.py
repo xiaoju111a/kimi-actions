@@ -55,16 +55,16 @@ def should_exclude(filename: str, patterns: list = None) -> bool:
         True if file should be excluded
     """
     patterns = patterns or DEFAULT_EXCLUDE_PATTERNS
-    
+
     # Check explicit patterns
     for pattern in patterns:
         if fnmatch.fnmatch(filename, pattern):
             return True
-    
+
     # Check if file is binary
     if is_binary_file(filename):
         return True
-    
+
     return False
 
 

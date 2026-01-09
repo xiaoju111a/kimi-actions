@@ -51,24 +51,24 @@ class ActionConfig:
     kimi_api_key: str = ""
     github_token: str = ""
     model: str = "kimi-k2-turbo-preview"
-    
+
     # General settings
     language: str = "en-US"  # zh-CN or en-US
     review_level: str = "normal"  # strict, normal, gentle
     max_files: int = 10
     max_tokens: int = 100000
-    
+
     # File filtering
     exclude_patterns: List[str] = field(default_factory=lambda: [
         "*.lock", "*.min.js", "*.min.css", "package-lock.json",
         "yarn.lock", "pnpm-lock.yaml", "*.map"
     ])
-    
+
     # Tool configs
     review: ReviewConfig = field(default_factory=ReviewConfig)
     describe: DescribeConfig = field(default_factory=DescribeConfig)
     improve: ImproveConfig = field(default_factory=ImproveConfig)
-    
+
     # Labels
     auto_labels: bool = True
     label_mapping: dict = field(default_factory=lambda: {
@@ -84,27 +84,27 @@ class ActionConfig:
     def from_env(cls) -> "ActionConfig":
         """Load configuration from GitHub Actions inputs."""
         config = cls()
-        
+
         # API keys (from GitHub Actions inputs)
         config.kimi_api_key = os.environ.get("INPUT_KIMI_API_KEY", "")
         config.github_token = os.environ.get("INPUT_GITHUB_TOKEN", "")
-        
+
         # General settings
         config.language = os.environ.get("INPUT_LANGUAGE", "en-US")
         config.model = os.environ.get("INPUT_MODEL", "kimi-k2-turbo-preview")
         config.review_level = os.environ.get("INPUT_REVIEW_LEVEL", "normal")
         config.max_files = int(os.environ.get("INPUT_MAX_FILES", "10"))
-        
+
         # Exclude patterns
         exclude_str = os.environ.get("INPUT_EXCLUDE_PATTERNS", "")
         if exclude_str:
             config.exclude_patterns = [p.strip() for p in exclude_str.split(",") if p.strip()]
-        
+
         # Extra instructions
         config.review.extra_instructions = os.environ.get("INPUT_REVIEW_EXTRA_INSTRUCTIONS", "")
         config.describe.extra_instructions = os.environ.get("INPUT_DESCRIBE_EXTRA_INSTRUCTIONS", "")
         config.improve.extra_instructions = os.environ.get("INPUT_IMPROVE_EXTRA_INSTRUCTIONS", "")
-        
+
         return config
 
 

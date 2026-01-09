@@ -12,11 +12,11 @@ from models import CodeSuggestion, SeverityLevel, SuggestionControl, ReviewOptio
 
 class TestSuggestionService:
     """Tests for SuggestionService class."""
-    
+
     @pytest.fixture
     def service(self):
         return SuggestionService()
-    
+
     @pytest.fixture
     def sample_suggestions(self):
         return [
@@ -60,24 +60,24 @@ class TestSuggestionService:
                 severity=SeverityLevel.LOW
             ),
         ]
-    
+
     def test_filter_by_category_all_enabled(self, service, sample_suggestions):
         options = ReviewOptions(bug=True, security=True, performance=True)
         filtered = service._filter_by_category(sample_suggestions, options)
         assert len(filtered) == 3
-    
+
     def test_filter_by_category_bug_only(self, service, sample_suggestions):
         options = ReviewOptions(bug=True, security=False, performance=False)
         filtered = service._filter_by_category(sample_suggestions, options)
         assert len(filtered) == 1
         assert filtered[0].label == "bug"
-    
+
     def test_filter_by_category_security_disabled(self, service, sample_suggestions):
         options = ReviewOptions(bug=True, security=False, performance=True)
         filtered = service._filter_by_category(sample_suggestions, options)
         assert len(filtered) == 2
         assert all(s.label != "security" for s in filtered)
-    
+
     def test_remove_duplicates(self, service):
         suggestions = [
             CodeSuggestion(
@@ -109,7 +109,7 @@ class TestSuggestionService:
         ]
         unique = service._remove_duplicates(suggestions)
         assert len(unique) == 1
-    
+
     def test_remove_duplicates_different_files(self, service):
         suggestions = [
             CodeSuggestion(
@@ -141,7 +141,7 @@ class TestSuggestionService:
         ]
         unique = service._remove_duplicates(suggestions)
         assert len(unique) == 2
-    
+
     def test_calculate_score_severity(self, service):
         critical = CodeSuggestion(
             id="1",
@@ -169,9 +169,9 @@ class TestSuggestionService:
             label="bug",
             severity=SeverityLevel.LOW
         )
-        
+
         assert service._calculate_score(critical) > service._calculate_score(low)
-    
+
     def test_calculate_score_label(self, service):
         security = CodeSuggestion(
             id="1",
@@ -199,9 +199,9 @@ class TestSuggestionService:
             label="performance",
             severity=SeverityLevel.MEDIUM
         )
-        
+
         assert service._calculate_score(security) > service._calculate_score(perf)
-    
+
     def test_validate_against_diff(self, service):
         suggestions = [
             CodeSuggestion(
@@ -231,13 +231,13 @@ class TestSuggestionService:
                 severity=SeverityLevel.MEDIUM
             ),
         ]
-        
+
         patch = "+old_function()\n-something"
         valid = service._validate_against_diff(suggestions, patch)
-        
+
         assert len(valid) == 1
         assert valid[0].existing_code == "old_function()"
-    
+
     def test_validate_against_diff_no_existing_code(self, service):
         suggestions = [
             CodeSuggestion(
@@ -254,32 +254,32 @@ class TestSuggestionService:
                 severity=SeverityLevel.MEDIUM
             ),
         ]
-        
+
         valid = service._validate_against_diff(suggestions, "any patch")
         assert len(valid) == 1  # Should be kept
-    
+
     def test_process_suggestions_limits_count(self, service, sample_suggestions):
         service.control = SuggestionControl(max_suggestions=1)
         options = ReviewOptions()
-        
+
         kept, discarded = service.process_suggestions(sample_suggestions, options)
-        
+
         assert len(kept) <= 1
-    
+
     def test_process_suggestions_filters_severity(self, service, sample_suggestions):
         service.control = SuggestionControl(severity_level_filter=SeverityLevel.HIGH)
         options = ReviewOptions()
-        
+
         kept, discarded = service.process_suggestions(sample_suggestions, options)
-        
+
         # Should only keep HIGH and CRITICAL
         for s in kept:
             assert s.severity in [SeverityLevel.HIGH, SeverityLevel.CRITICAL]
-    
+
     def test_process_suggestions_sorts_by_score(self, service, sample_suggestions):
         options = ReviewOptions()
         kept, _ = service.process_suggestions(sample_suggestions, options)
-        
+
         if len(kept) >= 2:
             # Should be sorted by score descending
             scores = [s.rank_score for s in kept]

@@ -78,13 +78,13 @@ def scan_code(code: str, lang: str) -> List[Dict]:
     """Scan code for security issues."""
     issues = []
     lines = code.split('\n')
-    
+
     for name, rule in SECURITY_PATTERNS.items():
         if lang.lower() not in rule["languages"]:
             continue
-        
+
         pattern = re.compile(rule["pattern"], re.IGNORECASE)
-        
+
         for i, line in enumerate(lines, 1):
             if pattern.search(line):
                 issues.append({
@@ -94,7 +94,7 @@ def scan_code(code: str, lang: str) -> List[Dict]:
                     "message": rule["message"],
                     "code": line.strip()[:80]
                 })
-    
+
     return issues
 
 
@@ -102,18 +102,18 @@ def format_output(issues: List[Dict]) -> str:
     """Format issues as readable output."""
     if not issues:
         return "No security issues found."
-    
+
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     sorted_issues = sorted(issues, key=lambda x: (severity_order.get(x["severity"], 4), x["line"]))
-    
+
     output = [f"Found {len(issues)} security issue(s):\n"]
-    
+
     for issue in sorted_issues:
         output.append(f"[{issue['severity'].upper()}] Line {issue['line']}: {issue['rule']}")
         output.append(f"  {issue['message']}")
         output.append(f"  Code: {issue['code']}")
         output.append("")
-    
+
     return "\n".join(output)
 
 
@@ -123,9 +123,9 @@ def main():
     parser.add_argument("--code", help="Code snippet to scan")
     parser.add_argument("--file", help="File path to scan")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
-    
+
     args = parser.parse_args()
-    
+
     if args.file:
         with open(args.file, 'r') as f:
             code = f.read()
@@ -133,15 +133,15 @@ def main():
         code = args.code
     else:
         code = sys.stdin.read()
-    
+
     issues = scan_code(code, args.lang)
-    
+
     if args.json:
         import json
         print(json.dumps(issues, indent=2))
     else:
         print(format_output(issues))
-    
+
     # Exit with error code if critical issues found
     critical_count = sum(1 for i in issues if i["severity"] == "critical")
     if critical_count > 0:

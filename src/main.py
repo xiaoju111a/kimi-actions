@@ -45,13 +45,13 @@ def handle_pr_event(event: dict, config: ActionConfig):
     pr_number = event.get("pull_request", {}).get("number")
     repo_name = event.get("repository", {}).get("full_name")
     action = event.get("action")
-    
+
     if not pr_number or not repo_name:
         logger.error("Invalid pull request event")
         return
-    
+
     logger.info(f"PR #{pr_number} in {repo_name} - action: {action}")
-    
+
     # Initialize clients
     try:
         kimi = KimiClient(config.kimi_api_key, config.model)
@@ -59,30 +59,30 @@ def handle_pr_event(event: dict, config: ActionConfig):
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
         return
-    
+
     # Auto actions on PR open/sync
     auto_review = get_input("auto_review", "true").lower() == "true"
     auto_describe = get_input("auto_describe", "false").lower() == "true"
     auto_improve = get_input("auto_improve", "false").lower() == "true"
-    
+
     try:
         if auto_describe and action in ["opened"]:
             logger.info("Running auto describe...")
             describe = Describe(kimi, github)
             describe.run(repo_name, pr_number, update_pr=True)
-        
+
         if auto_review:
             logger.info("Running auto review...")
             reviewer = Reviewer(kimi, github)
             result = reviewer.run(repo_name, pr_number)
             github.post_comment(repo_name, pr_number, result)
-        
+
         if auto_improve:
             logger.info("Running auto improve...")
             improve = Improve(kimi, github)
             result = improve.run(repo_name, pr_number)
             github.post_comment(repo_name, pr_number, result)
-        
+
         logger.info("Done!")
     except Exception as e:
         logger.error(f"Error processing PR: {e}")
@@ -97,27 +97,27 @@ def handle_comment_event(event: dict, config: ActionConfig):
     action = event.get("action")
     if action not in ["created", "edited"]:
         return
-    
+
     comment = event.get("comment", {})
     comment_body = comment.get("body", "")
-    
+
     # Check if this is a PR comment
     issue = event.get("issue", {})
     if "pull_request" not in issue:
         logger.info("Not a PR comment, skipping")
         return
-    
+
     # Parse command
     command, args = parse_command(comment_body)
     if not command:
         return
-    
+
     pr_number = issue.get("number")
     repo_name = event.get("repository", {}).get("full_name")
-    
+
     logger.info(f"Command: /{command} {args}")
     logger.info(f"PR #{pr_number} in {repo_name}")
-    
+
     # Initialize clients
     try:
         kimi = KimiClient(config.kimi_api_key, config.model)
@@ -125,18 +125,18 @@ def handle_comment_event(event: dict, config: ActionConfig):
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
         return
-    
+
     # Add reaction to show we're processing
     github.add_reaction(repo_name, pr_number, comment.get("id"), "eyes")
-    
+
     # Handle commands
     result = None
-    
+
     try:
         if command == "review":
             reviewer = Reviewer(kimi, github)
             result = reviewer.run(repo_name, pr_number)
-        
+
         elif command == "describe":
             describe = Describe(kimi, github)
             if args == "--comment":
@@ -144,35 +144,35 @@ def handle_comment_event(event: dict, config: ActionConfig):
             else:
                 describe.run(repo_name, pr_number, update_pr=True)
                 result = "✅ PR description updated"
-        
+
         elif command == "improve":
             improve = Improve(kimi, github)
             result = improve.run(repo_name, pr_number)
-        
+
         elif command == "ask":
             if not args:
                 result = "❌ Please provide a question, e.g.: `/ask What does this function do?`"
             else:
                 ask = Ask(kimi, github)
                 result = ask.run(repo_name, pr_number, question=args)
-        
+
         elif command == "help":
             result = get_help_message()
-        
+
         else:
             result = f"❌ Unknown command: `/{command}`\n\nUse `/help` to see available commands."
-    
+
     except Exception as e:
         logger.error(f"Error handling command /{command}: {e}")
         result = f"❌ Error executing command: {str(e)}"
-    
+
     # Post result
     if result:
         try:
             github.post_comment(repo_name, pr_number, result)
         except Exception as e:
             logger.error(f"Failed to post result: {e}")
-    
+
     logger.info("Done!")
 
 
@@ -208,12 +208,12 @@ def main():
     # Configure logging level from env
     log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
     logging.getLogger().setLevel(getattr(logging, log_level, logging.INFO))
-    
+
     logger.info("Kimi Actions starting...")
-    
+
     # Load config
     config = ActionConfig.from_env()
-    
+
     # Validate required inputs
     if not config.kimi_api_key:
         logger.error("KIMI_API_KEY is required")
@@ -221,19 +221,19 @@ def main():
     if not config.github_token:
         logger.error("GITHUB_TOKEN is required")
         sys.exit(1)
-    
+
     # Load GitHub event
     event_path = os.environ.get("GITHUB_EVENT_PATH")
     if not event_path:
         logger.error("GITHUB_EVENT_PATH not set")
         sys.exit(1)
-    
+
     with open(event_path, "r") as f:
         event = json.load(f)
-    
+
     event_name = os.environ.get("GITHUB_EVENT_NAME")
     logger.info(f"Event: {event_name}")
-    
+
     # Route to appropriate handler
     if event_name in ["pull_request", "pull_request_target"]:
         handle_pr_event(event, config)
