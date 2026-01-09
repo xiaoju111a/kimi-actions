@@ -55,7 +55,7 @@ jobs:
        github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '/'))
     steps:
-      - uses: xiaoju/kimi-actions@v1
+      - uses: xiaoju111a/kimi-actions@v1
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -155,7 +155,7 @@ result = [item.value for item in items if item.is_valid()]
 ### Action Inputs
 
 ```yaml
-- uses: xiaoju/kimi-actions@v1
+- uses: xiaoju111a/kimi-actions@v1
   with:
     # Required
     kimi_api_key: ${{ secrets.KIMI_API_KEY }}
