@@ -162,8 +162,8 @@ class TestReviewerIntegration:
 
         result = reviewer.run("owner/repo", 42)
 
-        assert "Kimi Code Review" in result
-        assert "security" in result.lower() or "Security" in result
+        assert "Pull request overview" in result
+        assert "Reviewed changes" in result
 
     def test_review_handles_empty_diff(self, mock_action_config):
         """Test reviewer handles empty diff gracefully."""
