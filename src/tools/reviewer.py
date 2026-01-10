@@ -340,7 +340,7 @@ Please output review results in YAML format."""
         incremental: bool = False,
         current_sha: str = None
     ) -> str:
-        """Format review with filtered suggestions."""
+        """Format review in Copilot-style format."""
         try:
             yaml_content = response
             if "```yaml" in response:
@@ -351,54 +351,62 @@ Please output review results in YAML format."""
         except Exception:
             return self._format_fallback(response, current_sha)
 
-        lines = ["## 🤖 Kimi Code Review\n"]
+        lines = []
 
-        # Incremental indicator
-        if incremental:
-            lines.append("*📝 Incremental review (new commits only)*\n")
-
-        # Summary
+        # Pull request overview
         summary = data.get("summary", "").strip()
-        score = data.get("score", "N/A")
-        effort = data.get("estimated_effort", "N/A")
+        lines.append("### Pull request overview")
+        if summary:
+            lines.append(f"{summary}\n")
 
-        lines.append(f"### 📊 Summary\n{summary}\n")
-        lines.append(f"- **Code Score**: {score}/100")
-        lines.append(f"- **Review Effort**: {effort}/5\n")
-
-        # Suggestions
+        # Key Changes (extract from suggestions)
         if valid:
-            lines.append(f"### 🔍 Issues Found ({len(valid)})\n")
-            severity_icons = {SeverityLevel.CRITICAL: "🔴", SeverityLevel.HIGH: "🟠", SeverityLevel.MEDIUM: "🟡", SeverityLevel.LOW: "🔵"}
-            label_icons = {"bug": "🐛", "performance": "⚡", "security": "🔒"}
+            lines.append("**Key Changes:**")
+            # Group by file
+            files_changed = set(s.relevant_file for s in valid if s.relevant_file)
+            for f in list(files_changed)[:5]:
+                lines.append(f"- `{f}`")
+            lines.append("")
 
-            for i, s in enumerate(valid, 1):
-                sev_icon = severity_icons.get(s.severity, "⚪")
-                label_icon = label_icons.get(s.label.lower(), "💡")
+        # Reviewed changes summary
+        total_files = len(set(s.relevant_file for s in valid + discarded if s.relevant_file))
+        if excluded_files:
+            total_files += len(excluded_files)
+        lines.append("**Reviewed changes**")
+        lines.append(f"Kimi reviewed {total_files} changed files and generated {len(valid)} comments.\n")
 
+        # Comments section
+        if valid:
+            lines.append("---\n")
+            
+            for s in valid:
+                # File and line location
                 location = f"`{s.relevant_file}`"
                 if s.relevant_lines_start:
-                    location += f" (L{s.relevant_lines_start}"
+                    location += f" line {s.relevant_lines_start}"
                     if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
                         location += f"-{s.relevant_lines_end}"
-                    location += ")"
 
-                lines.append(f"#### {sev_icon} {label_icon} {i}. {s.one_sentence_summary}")
-                lines.append(f"📍 {location} | Severity: **{s.severity.value}**\n")
+                lines.append(f"📍 {location}\n")
+                
+                # Issue description
                 lines.append(f"{s.suggestion_content}\n")
 
+                # Suggested change with diff
                 if s.existing_code and s.improved_code:
-                    lines.append("<details>")
-                    lines.append("<summary>View code comparison</summary>\n")
-                    lines.append(f"**Current code:**\n```{s.language}\n{s.existing_code.strip()}\n```\n")
-                    lines.append(f"**Suggested:**\n```{s.language}\n{s.improved_code.strip()}\n```")
-                    lines.append("</details>\n")
-        else:
-            lines.append("### ✅ No major issues found\n")
+                    lines.append("**Suggested change**")
+                    lines.append("```diff")
+                    for line in s.existing_code.strip().splitlines():
+                        lines.append(f"- {line}")
+                    for line in s.improved_code.strip().splitlines():
+                        lines.append(f"+ {line}")
+                    lines.append("```")
+                
+                lines.append("\n---\n")
 
-        # Discarded suggestions
+        # Collapsed low-priority suggestions
         if discarded:
-            lines.append(f"<details>\n<summary>📋 {len(discarded)} low-priority suggestions collapsed</summary>\n")
+            lines.append(f"<details>\n<summary>📋 {len(discarded)} low-priority suggestions</summary>\n")
             for s in discarded[:3]:
                 lines.append(f"- {s.one_sentence_summary} (`{s.relevant_file}`)")
             if len(discarded) > 3:
@@ -407,16 +415,15 @@ Please output review results in YAML format."""
 
         # Excluded files
         if excluded_files:
-            lines.append(f"<details>\n<summary>📁 {len(excluded_files)} files excluded due to token limit</summary>\n")
+            lines.append(f"<details>\n<summary>📁 {len(excluded_files)} files not reviewed (token limit)</summary>\n")
             for chunk in excluded_files[:5]:
-                lines.append(f"- `{chunk.filename}` (~{chunk.tokens} tokens)")
+                lines.append(f"- `{chunk.filename}`")
             if len(excluded_files) > 5:
                 lines.append(f"- ... and {len(excluded_files) - 5} more")
             lines.append("</details>\n")
 
         lines.append(self.format_footer())
 
-        # Add SHA marker for incremental review tracking
         if current_sha:
             lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
 
