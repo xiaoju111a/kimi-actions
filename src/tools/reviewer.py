@@ -111,9 +111,8 @@ Please output review results in YAML format."""
                 if inline_count > 0:
                     return ""  # Already posted, return empty to avoid duplicate
                 
-                # Fallback: post summary as regular comment if inline failed
-                self.github.post_comment(repo_name, pr_number, summary_comment)
-                return ""
+                # Fallback: return summary for main.py to post
+                return summary_comment
 
             # Format and return full result (normal mode or inline fallback)
             result = self._format_review(
