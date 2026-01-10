@@ -138,7 +138,7 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
                 # Extract only the last few lines of diff_hunk (the relevant code)
                 hunk_lines = diff_hunk.strip().split('\n')
                 # Take last 5 lines or less, skip the @@ header
-                relevant_lines = [l for l in hunk_lines if not l.startswith('@@')][-5:]
+                relevant_lines = [line for line in hunk_lines if not line.startswith('@@')][-5:]
                 code_context = '\n'.join(relevant_lines)
                 
                 context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{code_context}\n```\n\n{args}"
