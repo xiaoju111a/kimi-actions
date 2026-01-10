@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: read
 
 jobs:
   test:
@@ -19,7 +20,23 @@ jobs:
        github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '/'))
     steps:
+      - name: Get PR ref (for issue_comment)
+        id: get-pr
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('ref', pr.data.head.ref);
+            core.setOutput('sha', pr.data.head.sha);
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && steps.get-pr.outputs.ref || github.head_ref }}
       
       - name: Run Kimi Action
         uses: ./

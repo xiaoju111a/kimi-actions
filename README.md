@@ -12,6 +12,7 @@
 - 📝 `/describe` - Auto-generate PR title and description
 - ✨ `/improve` - Code improvement suggestions with concrete fixes
 - 💬 `/ask` - Interactive Q&A about the PR
+- 🏷️ `/labels` - Auto-generate and apply PR labels based on content
 - 🧠 **Agent Skills** - Modular capability extension with custom review rules
 - 🌐 Multi-language support (English/Chinese)
 - ⚙️ Configurable review strictness
@@ -72,14 +73,14 @@ Use these commands in PR comments:
 | Command | Description |
 |---------|-------------|
 | `/review` | Perform code review on PR |
-| `/review --incremental` | Review only new commits since last review |
-| `/review --inline` | Post inline comments on specific code lines |
-| `/describe` | Auto-generate PR description (updates PR) |
+| `/review --incremental` | Review only new commits |
+| `/review --inline` | Post inline comments on code |
+| `/describe` | Auto-generate PR description |
 | `/describe --comment` | Generate description as comment |
 | `/improve` | Provide code improvement suggestions |
 | `/ask <question>` | Q&A about the PR |
 | `/labels` | Auto-generate and apply PR labels |
-| `/help` | Show help message |
+| `/help` | Show this help message |
 
 ## Example Output
 
@@ -285,7 +286,8 @@ kimi-actions/
     │   ├── reviewer.py         # /review
     │   ├── describe.py         # /describe
     │   ├── improve.py          # /improve
-    │   └── ask.py              # /ask
+    │   ├── ask.py              # /ask
+    │   └── labels.py           # /labels
     └── skills/                 # Built-in Skills
         ├── code-review/
         │   ├── SKILL.md
