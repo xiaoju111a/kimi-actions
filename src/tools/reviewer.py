@@ -98,13 +98,18 @@ Please output review results in YAML format."""
 
             # Post inline comments if requested
             if inline and filtered:
+                # First post summary comment
+                summary_comment = self._format_inline_summary(
+                    response, filtered, len(filtered),
+                    incremental=incremental, current_sha=pr.head.sha
+                )
+                self.github.post_comment(repo_name, pr_number, summary_comment)
+                
+                # Then post inline comments
                 inline_count = self._post_inline_comments(repo_name, pr_number, filtered)
-                # If inline mode, return short summary instead of full review
                 if inline_count > 0:
-                    return self._format_inline_summary(
-                        response, filtered, inline_count,
-                        incremental=incremental, current_sha=pr.head.sha
-                    )
+                    return ""  # Already posted, return empty to avoid duplicate
+                return summary_comment  # Fallback if inline failed
 
             # Format and return full result (normal mode or inline fallback)
             result = self._format_review(
@@ -182,7 +187,7 @@ Please output review results in YAML format."""
             try:
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments,
-                    body="🤖 Kimi found some issues in this PR.",
+                    body="",  # Summary posted separately
                     event="COMMENT"
                 )
                 logger.info(f"Posted {len(comments)} inline comments")
