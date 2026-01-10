@@ -135,8 +135,13 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
                 result = "❌ Please provide a question"
             else:
                 ask = Ask(kimi, github)
-                # Add context about the code location with diff format
-                context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{diff_hunk}\n```\n\n{args}"
+                # Extract only the last few lines of diff_hunk (the relevant code)
+                hunk_lines = diff_hunk.strip().split('\n')
+                # Take last 5 lines or less, skip the @@ header
+                relevant_lines = [l for l in hunk_lines if not l.startswith('@@')][-5:]
+                code_context = '\n'.join(relevant_lines)
+                
+                context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{code_context}\n```\n\n{args}"
                 result = ask.run(repo_name, pr_number, question=context_question)
         else:
             # For other commands, just run normally
