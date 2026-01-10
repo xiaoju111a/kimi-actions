@@ -264,12 +264,12 @@ Please output review results in YAML format."""
         if "linter" in skill.scripts:
             result = skill.run_script("linter", lang=lang, code=diff[:5000])
             if result:
-                output_parts.append(f"## Linter Output\n```\n{result}\n```")
+                output_parts.append(f"## Linter Output\n```text\n{result}\n```")
 
         if "security_scan" in skill.scripts:
             result = skill.run_script("security_scan", lang=lang, code=diff[:5000])
             if result:
-                output_parts.append(f"## Security Scan Output\n```\n{result}\n```")
+                output_parts.append(f"## Security Scan Output\n```text\n{result}\n```")
 
         return "\n\n".join(output_parts)
 
