@@ -151,28 +151,32 @@ Please output review results in YAML format."""
     def _post_inline_comments(
         self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion]
     ):
-        """Post inline comments for each suggestion."""
+        """Post inline comments with GitHub native suggestion format."""
         comments = []
 
         for s in suggestions:
             if not s.relevant_file or not s.relevant_lines_start:
                 continue
 
-            # Build comment body
-            sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
-            icon = sev_icons.get(s.severity.value, "⚪")
+            # Build comment body with description
+            body = f"{s.suggestion_content}"
 
-            body = f"**{icon} {s.one_sentence_summary}**\n\n{s.suggestion_content}"
-
+            # Use GitHub's native suggestion syntax for code changes
             if s.improved_code:
-                body += f"\n\n**Suggested fix:**\n```{s.language}\n{s.improved_code.strip()}\n```"
+                body += f"\n\n```suggestion\n{s.improved_code.strip()}\n```"
 
-            comments.append({
+            comment = {
                 "path": s.relevant_file,
-                "line": s.relevant_lines_start,
+                "line": s.relevant_lines_end if s.relevant_lines_end else s.relevant_lines_start,
                 "body": body,
                 "side": "RIGHT"
-            })
+            }
+            
+            # Add start_line for multi-line suggestions
+            if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
+                comment["start_line"] = s.relevant_lines_start
+            
+            comments.append(comment)
 
         if comments:
             try:

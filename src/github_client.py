@@ -91,8 +91,9 @@ class GitHubClient:
         """Submit a review with inline comments on specific lines.
 
         Args:
-            comments: List of dicts with keys: path, line, body, side (optional)
+            comments: List of dicts with keys: path, line, body, side (optional), start_line (optional)
                       side: "RIGHT" for new code (default), "LEFT" for old code
+                      start_line: For multi-line comments/suggestions
             body: Overall review body
             event: APPROVE, REQUEST_CHANGES, or COMMENT
         """
@@ -108,15 +109,21 @@ class GitHubClient:
                 path = c.get("path", "")
                 line = c.get("line", 0)
                 side = c.get("side", "RIGHT")
+                start_line = c.get("start_line")
 
                 # Validate line is in diff
                 if path in diff_lines and line in diff_lines[path]:
-                    valid_comments.append({
+                    comment_data = {
                         "path": path,
                         "line": line,
                         "body": c.get("body", ""),
                         "side": side
-                    })
+                    }
+                    # Add start_line for multi-line suggestions
+                    if start_line and start_line != line:
+                        comment_data["start_line"] = start_line
+                        comment_data["start_side"] = side
+                    valid_comments.append(comment_data)
                 else:
                     logger.warning(f"Skipping comment: {path}:{line} not in diff")
 
