@@ -113,11 +113,11 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
 
     # Get context from inline comment
     file_path = comment.get("path", "")
-    line = comment.get("line") or comment.get("original_line", 0)
+    comment_line = comment.get("line") or comment.get("original_line", 0)
     diff_hunk = comment.get("diff_hunk", "")
 
     logger.info(f"Inline command: /{command} {args}")
-    logger.info(f"PR #{pr_number} in {repo_name}, file: {file_path}:{line}")
+    logger.info(f"PR #{pr_number} in {repo_name}, file: {file_path}:{comment_line}")
 
     # Initialize clients
     try:
@@ -141,7 +141,7 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
                 relevant_lines = [line for line in hunk_lines if not line.startswith('@@')][-5:]
                 code_context = '\n'.join(relevant_lines)
                 
-                context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{code_context}\n```\n\n{args}"
+                context_question = f"Regarding `{file_path}` line {comment_line}:\n```diff\n{code_context}\n```\n\n{args}"
                 result = ask.run(repo_name, pr_number, question=context_question)
         else:
             # For other commands, just run normally
@@ -157,7 +157,7 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
             # Use create_review to post inline comment with code context
             comments = [{
                 "path": file_path,
-                "line": line,
+                "line": comment_line,
                 "body": result,
                 "side": "RIGHT"
             }]
