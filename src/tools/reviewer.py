@@ -98,18 +98,22 @@ Please output review results in YAML format."""
 
             # Post inline comments if requested
             if inline and filtered:
-                # First post summary comment
+                # Format summary for review body
                 summary_comment = self._format_inline_summary(
                     response, filtered, len(filtered),
                     incremental=incremental, current_sha=pr.head.sha
                 )
-                self.github.post_comment(repo_name, pr_number, summary_comment)
                 
-                # Then post inline comments
-                inline_count = self._post_inline_comments(repo_name, pr_number, filtered)
+                # Post review with body (summary) + inline comments together
+                inline_count = self._post_inline_comments(
+                    repo_name, pr_number, filtered, summary_body=summary_comment
+                )
                 if inline_count > 0:
                     return ""  # Already posted, return empty to avoid duplicate
-                return summary_comment  # Fallback if inline failed
+                
+                # Fallback: post summary as regular comment if inline failed
+                self.github.post_comment(repo_name, pr_number, summary_comment)
+                return ""
 
             # Format and return full result (normal mode or inline fallback)
             result = self._format_review(
@@ -154,7 +158,8 @@ Please output review results in YAML format."""
         return compressed, included, excluded, last_sha
 
     def _post_inline_comments(
-        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion]
+        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion],
+        summary_body: str = ""
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
@@ -187,10 +192,10 @@ Please output review results in YAML format."""
             try:
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments,
-                    body="",  # Summary posted separately
+                    body=summary_body,  # Summary as review body
                     event="COMMENT"
                 )
-                logger.info(f"Posted {len(comments)} inline comments")
+                logger.info(f"Posted {len(comments)} inline comments with summary")
                 return len(comments)
             except Exception as e:
                 logger.error(f"Failed to post inline comments: {e}")
@@ -439,8 +444,33 @@ Please output review results in YAML format."""
         return "\n".join(lines)
 
     def _format_fallback(self, response: str, current_sha: str = None) -> str:
-        """Fallback formatting."""
-        result = f"## 🤖 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
-        if current_sha:
-            result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
-        return result
+        """Fallback formatting when no suggestions found."""
+        try:
+            # Try to parse YAML and format nicely
+            yaml_content = response
+            if "```yaml" in response:
+                yaml_content = response.split("```yaml")[1].split("```")[0]
+            elif "```" in response:
+                yaml_content = response.split("```")[1].split("```")[0]
+            
+            data = yaml.safe_load(yaml_content)
+            summary = data.get("summary", "").strip()
+            score = data.get("score", "N/A")
+            
+            lines = ["## 🤖 Kimi Code Review\n"]
+            lines.append("### ✅ No issues found\n")
+            if summary:
+                lines.append(f"**Summary**: {summary}\n")
+            lines.append(f"**Code Score**: {score}/100\n")
+            lines.append(self.format_footer())
+            
+            if current_sha:
+                lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
+            
+            return "\n".join(lines)
+        except Exception:
+            # True fallback - just show raw response
+            result = f"## 🤖 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
+            if current_sha:
+                result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
+            return result
