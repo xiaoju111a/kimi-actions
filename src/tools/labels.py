@@ -120,7 +120,7 @@ Be conservative. Only suggest labels you're confident about."""
                 reason = data.get("reason", "")
 
                 # Filter to valid labels only
-                valid = [l for l in labels if l.lower() in [v.lower() for v in valid_labels]]
+                valid = [label for label in labels if label.lower() in [v.lower() for v in valid_labels]]
                 return valid[:3], reason  # Max 3 labels
 
         except (json.JSONDecodeError, Exception) as e:
@@ -133,9 +133,9 @@ Be conservative. Only suggest labels you're confident about."""
         lines = ["## 🏷️ Kimi Labels\n"]
 
         if applied:
-            lines.append(f"✅ Applied labels: {', '.join(f'`{l}`' for l in labels)}\n")
+            lines.append(f"✅ Applied labels: {', '.join(f'`{label}`' for label in labels)}\n")
         else:
-            lines.append(f"⚠️ Suggested labels: {', '.join(f'`{l}`' for l in labels)}\n")
+            lines.append(f"⚠️ Suggested labels: {', '.join(f'`{label}`' for label in labels)}\n")
             lines.append("(Failed to apply automatically)\n")
 
         if reason:

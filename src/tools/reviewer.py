@@ -50,7 +50,6 @@ class Reviewer(BaseTool):
                 return "No new changes since last review."
         else:
             compressed_diff, included_chunks, excluded_chunks = self.get_diff(repo_name, pr_number)
-            last_sha = None
 
         if not compressed_diff:
             return "No changes to review."
