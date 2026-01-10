@@ -1,6 +1,5 @@
 """User service module with various issues for testing."""
 
-import os
 import pickle
 import hashlib
 import subprocess
