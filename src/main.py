@@ -141,8 +141,9 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
                 relevant_lines = [line for line in hunk_lines if not line.startswith('@@')][-5:]
                 code_context = '\n'.join(relevant_lines)
                 
+                # Pass code context to Kimi but don't show in output (GitHub UI already shows it)
                 context_question = f"Regarding `{file_path}` line {comment_line}:\n```diff\n{code_context}\n```\n\n{args}"
-                result = ask.run(repo_name, pr_number, question=context_question)
+                result = ask.run(repo_name, pr_number, question=context_question, inline=True)
         else:
             # For other commands, just run normally
             result = f"ℹ️ Command `/{command}` is better used in the main PR comment area."

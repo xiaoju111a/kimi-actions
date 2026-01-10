@@ -17,8 +17,11 @@ class Ask(BaseTool):
             repo_name: Repository name
             pr_number: PR number
             question: The question to answer (required)
+            inline: If True, use compact format for inline comments
         """
         question = kwargs.get("question", "")
+        inline = kwargs.get("inline", False)
+        
         if not question:
             return "Please provide a question. Use `/ask <question>` format."
 
@@ -49,9 +52,17 @@ Please answer the question above."""
 
         response = self.call_kimi(system_prompt, user_prompt)
 
-        return f"""## 🤖 Kimi Answer
+        # Compact format for inline comments (GitHub UI already shows code context)
+        if inline:
+            return f"""## 🤖 Kimi Answer
 
-> **Question**: {question}
+{response}
+
+{self.format_footer()}
+"""
+
+        # Full format for regular comments
+        return f"""## 🤖 Kimi Answer
 
 {response}
 
