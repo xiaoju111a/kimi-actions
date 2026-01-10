@@ -152,24 +152,15 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
         logger.error(f"Error handling inline command /{command}: {e}")
         result = f"❌ Error: {str(e)}"
 
-    # Post result as inline review comment on the same line
+    # Reply to the original inline comment
     if result:
         try:
-            # Use create_review to post inline comment with code context
-            comments = [{
-                "path": file_path,
-                "line": comment_line,
-                "body": result,
-                "side": "RIGHT"
-            }]
-            github.create_review_with_comments(repo_name, pr_number, comments, body="", event="COMMENT")
+            comment_id = comment.get("id")
+            github.reply_to_review_comment(repo_name, pr_number, comment_id, result)
         except Exception as e:
-            logger.error(f"Failed to post inline comment: {e}")
-            # Fallback to reply
-            try:
-                github.reply_to_review_comment(repo_name, pr_number, comment.get("id"), result)
-            except Exception:
-                github.post_comment(repo_name, pr_number, f"> /{command} {args}\n\n{result}")
+            logger.error(f"Failed to reply to comment: {e}")
+            # Fallback to regular comment
+            github.post_comment(repo_name, pr_number, f"> /{command} {args}\n\n{result}")
 
 
 def handle_comment_event(event: dict, config: ActionConfig):
