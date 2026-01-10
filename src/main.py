@@ -93,6 +93,69 @@ def handle_pr_event(event: dict, config: ActionConfig):
             pass
 
 
+def handle_review_comment_event(event: dict, config: ActionConfig):
+    """Handle pull_request_review_comment event (inline comment command trigger)."""
+    action = event.get("action")
+    if action != "created":
+        return
+
+    comment = event.get("comment", {})
+    comment_body = comment.get("body", "")
+
+    # Parse command
+    command, args = parse_command(comment_body)
+    if not command:
+        return
+
+    pr = event.get("pull_request", {})
+    pr_number = pr.get("number")
+    repo_name = event.get("repository", {}).get("full_name")
+
+    # Get context from inline comment
+    file_path = comment.get("path", "")
+    line = comment.get("line") or comment.get("original_line", 0)
+    diff_hunk = comment.get("diff_hunk", "")
+
+    logger.info(f"Inline command: /{command} {args}")
+    logger.info(f"PR #{pr_number} in {repo_name}, file: {file_path}:{line}")
+
+    # Initialize clients
+    try:
+        kimi = KimiClient(config.kimi_api_key, config.model)
+        github = GitHubClient(config.github_token)
+    except Exception as e:
+        logger.error(f"Failed to initialize clients: {e}")
+        return
+
+    # Handle command with context
+    result = None
+    try:
+        if command == "ask":
+            if not args:
+                result = "❌ Please provide a question"
+            else:
+                ask = Ask(kimi, github)
+                # Add context about the code location
+                context_question = f"Regarding `{file_path}` line {line}:\n```\n{diff_hunk}\n```\n\n{args}"
+                result = ask.run(repo_name, pr_number, question=context_question)
+        else:
+            # For other commands, just run normally
+            result = f"ℹ️ Command `/{command}` is better used in the main PR comment area."
+
+    except Exception as e:
+        logger.error(f"Error handling inline command /{command}: {e}")
+        result = f"❌ Error: {str(e)}"
+
+    # Reply to the inline comment
+    if result:
+        try:
+            github.reply_to_review_comment(repo_name, pr_number, comment.get("id"), result)
+        except Exception as e:
+            logger.error(f"Failed to reply to review comment: {e}")
+            # Fallback to regular comment
+            github.post_comment(repo_name, pr_number, f"> /{command} {args}\n\n{result}")
+
+
 def handle_comment_event(event: dict, config: ActionConfig):
     """Handle issue_comment event (command trigger)."""
     action = event.get("action")
@@ -175,10 +238,15 @@ def handle_comment_event(event: dict, config: ActionConfig):
         logger.error(f"Error handling command /{command}: {e}")
         result = f"❌ Error executing command: {str(e)}"
 
-    # Post result
+    # Post result with command quote
     if result:
         try:
-            github.post_comment(repo_name, pr_number, result)
+            # Quote the original command
+            original_command = f"/{command}"
+            if args:
+                original_command += f" {args}"
+            quoted_result = f"> {original_command}\n\n{result}"
+            github.post_comment(repo_name, pr_number, quoted_result)
         except Exception as e:
             logger.error(f"Failed to post result: {e}")
 
@@ -253,6 +321,8 @@ def main():
         handle_pr_event(event, config)
     elif event_name == "issue_comment":
         handle_comment_event(event, config)
+    elif event_name == "pull_request_review_comment":
+        handle_review_comment_event(event, config)
     else:
         logger.warning(f"Unsupported event: {event_name}")
         sys.exit(0)
