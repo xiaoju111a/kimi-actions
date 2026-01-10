@@ -90,5 +90,5 @@ Please provide code improvement suggestions."""
                     lines.append(f"**Suggested:**\n```{language}\n{improved}\n```")
                 lines.append("</details>\n")
 
-        lines.append(self.format_footer(f"共 {len(suggestions)} 条建议"))
+        lines.append(self.format_footer(f"{len(suggestions)} suggestions"))
         return "\n".join(lines)

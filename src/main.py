@@ -217,9 +217,7 @@ def handle_comment_event(event: dict, config: ActionConfig):
             reviewer = Reviewer(kimi, github)
             # Check for flags
             incremental = "--incremental" in args or "-i" in args
-            # inline is default True, --no-inline to disable
-            inline = "--no-inline" not in args
-            result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=inline)
+            result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=True)
 
         elif command == "describe":
             describe = Describe(kimi, github)
@@ -277,9 +275,8 @@ def get_help_message() -> str:
 
 | Command | Description |
 |---------|-------------|
-| `/review` | Perform code review on PR |
+| `/review` | Perform code review with inline comments |
 | `/review --incremental` | Review only new commits |
-| `/review --inline` | Post inline comments on code |
 | `/describe` | Auto-generate PR description |
 | `/describe --comment` | Generate description as comment |
 | `/improve` | Provide code improvement suggestions |
@@ -292,7 +289,6 @@ def get_help_message() -> str:
 ```bash
 /review
 /review --incremental
-/review --no-inline
 /ask What is the time complexity of this function?
 /labels
 ```

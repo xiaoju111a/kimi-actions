@@ -96,9 +96,8 @@ Use these commands in PR comments:
 
 | Command | Description |
 |---------|-------------|
-| `/review` | Code review (inline comments by default) |
+| `/review` | Code review with inline comments |
 | `/review --incremental` | Review only new commits |
-| `/review --no-inline` | Review as single comment |
 | `/describe` | Auto-generate PR description |
 | `/describe --comment` | Generate description as comment |
 | `/improve` | Code improvement suggestions |
