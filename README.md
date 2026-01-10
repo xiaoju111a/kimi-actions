@@ -46,10 +46,13 @@ on:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: read
 
 jobs:
   review:
@@ -58,8 +61,29 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' && 
        github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/')) ||
+      (github.event_name == 'pull_request_review_comment' &&
        startsWith(github.event.comment.body, '/'))
     steps:
+      - name: Get PR ref (for comments)
+        id: get-pr
+        if: github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue?.number || context.payload.pull_request?.number;
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            core.setOutput('ref', pr.data.head.ref);
+            core.setOutput('sha', pr.data.head.sha);
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && steps.get-pr.outputs.ref || github.head_ref }}
+
       - uses: xiaoju111a/kimi-actions@v1
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}

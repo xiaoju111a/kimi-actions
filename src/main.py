@@ -135,8 +135,8 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
                 result = "❌ Please provide a question"
             else:
                 ask = Ask(kimi, github)
-                # Add context about the code location
-                context_question = f"Regarding `{file_path}` line {line}:\n```\n{diff_hunk}\n```\n\n{args}"
+                # Add context about the code location with diff format
+                context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{diff_hunk}\n```\n\n{args}"
                 result = ask.run(repo_name, pr_number, question=context_question)
         else:
             # For other commands, just run normally
@@ -273,10 +273,10 @@ def get_help_message() -> str:
 
 ### Examples
 
-```
+```bash
 /review
 /review --incremental
-/review --inline
+/review --no-inline
 /ask What is the time complexity of this function?
 /labels
 ```
