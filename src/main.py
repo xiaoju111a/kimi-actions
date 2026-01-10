@@ -74,8 +74,9 @@ def handle_pr_event(event: dict, config: ActionConfig):
         if auto_review:
             logger.info("Running auto review...")
             reviewer = Reviewer(kimi, github)
-            result = reviewer.run(repo_name, pr_number)
-            github.post_comment(repo_name, pr_number, result)
+            result = reviewer.run(repo_name, pr_number, inline=True)
+            if result:  # Only post if not empty (inline already posted)
+                github.post_comment(repo_name, pr_number, result)
 
         if auto_improve:
             logger.info("Running auto improve...")
@@ -137,7 +138,8 @@ def handle_comment_event(event: dict, config: ActionConfig):
             reviewer = Reviewer(kimi, github)
             # Check for flags
             incremental = "--incremental" in args or "-i" in args
-            inline = "--inline" in args
+            # inline is default True, --no-inline to disable
+            inline = "--no-inline" not in args
             result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=inline)
 
         elif command == "describe":
