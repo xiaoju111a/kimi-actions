@@ -78,6 +78,16 @@ class GitHubClient:
         except GithubException as e:
             logger.warning(f"Failed to add reaction: {e}")
 
+    def reply_to_review_comment(self, repo_name: str, pr_number: int, comment_id: int, body: str):
+        """Reply to a review comment (inline comment)."""
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            pr.create_review_comment_reply(comment_id, body)
+            logger.info(f"Replied to review comment {comment_id}")
+        except GithubException as e:
+            logger.error(f"Failed to reply to review comment: {e}")
+            raise
+
     # === Inline Comments (Review Comments) ===
 
     def create_review_with_comments(
