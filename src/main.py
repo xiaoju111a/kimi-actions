@@ -9,7 +9,7 @@ import sys
 from action_config import ActionConfig
 from kimi_client import KimiClient
 from github_client import GitHubClient
-from tools import Reviewer, Describe, Improve, Ask
+from tools import Reviewer, Describe, Improve, Ask, Labels
 
 # Configure logging
 logging.basicConfig(
@@ -135,7 +135,10 @@ def handle_comment_event(event: dict, config: ActionConfig):
     try:
         if command == "review":
             reviewer = Reviewer(kimi, github)
-            result = reviewer.run(repo_name, pr_number)
+            # Check for flags
+            incremental = "--incremental" in args or "-i" in args
+            inline = "--inline" in args
+            result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=inline)
 
         elif command == "describe":
             describe = Describe(kimi, github)
@@ -155,6 +158,10 @@ def handle_comment_event(event: dict, config: ActionConfig):
             else:
                 ask = Ask(kimi, github)
                 result = ask.run(repo_name, pr_number, question=args)
+
+        elif command == "labels" or command == "label":
+            labels_tool = Labels(kimi, github)
+            result = labels_tool.run(repo_name, pr_number)
 
         elif command == "help":
             result = get_help_message()
@@ -185,18 +192,23 @@ def get_help_message() -> str:
 | Command | Description |
 |---------|-------------|
 | `/review` | Perform code review on PR |
+| `/review --incremental` | Review only new commits |
+| `/review --inline` | Post inline comments on code |
 | `/describe` | Auto-generate PR description |
 | `/describe --comment` | Generate description as comment |
 | `/improve` | Provide code improvement suggestions |
 | `/ask <question>` | Q&A about the PR |
+| `/labels` | Auto-generate and apply PR labels |
 | `/help` | Show this help message |
 
 ### Examples
 
 ```
 /review
+/review --incremental
+/review --inline
 /ask What is the time complexity of this function?
-/improve
+/labels
 ```
 
 ---

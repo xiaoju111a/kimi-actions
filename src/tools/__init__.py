@@ -5,5 +5,6 @@ from tools.reviewer import Reviewer
 from tools.describe import Describe
 from tools.improve import Improve
 from tools.ask import Ask
+from tools.labels import Labels
 
-__all__ = ["BaseTool", "Reviewer", "Describe", "Improve", "Ask"]
+__all__ = ["BaseTool", "Reviewer", "Describe", "Improve", "Ask", "Labels"]

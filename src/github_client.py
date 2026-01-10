@@ -1,7 +1,9 @@
 """GitHub API client for PR operations."""
 
 import os
+import re
 import logging
+from typing import List, Dict, Optional
 from github import Github, GithubException
 
 logger = logging.getLogger(__name__)
@@ -75,3 +77,181 @@ class GitHubClient:
             comment.create_reaction(reaction)
         except GithubException as e:
             logger.warning(f"Failed to add reaction: {e}")
+
+    # === Inline Comments (Review Comments) ===
+
+    def create_review_with_comments(
+        self,
+        repo_name: str,
+        pr_number: int,
+        comments: List[Dict],
+        body: str = "",
+        event: str = "COMMENT"
+    ):
+        """Submit a review with inline comments on specific lines.
+
+        Args:
+            comments: List of dicts with keys: path, line, body, side (optional)
+                      side: "RIGHT" for new code (default), "LEFT" for old code
+            body: Overall review body
+            event: APPROVE, REQUEST_CHANGES, or COMMENT
+        """
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            commit = pr.get_commits().reversed[0]  # Latest commit
+
+            # Filter valid comments (line must be in diff)
+            valid_comments = []
+            diff_lines = self._get_diff_line_map(repo_name, pr_number)
+
+            for c in comments:
+                path = c.get("path", "")
+                line = c.get("line", 0)
+                side = c.get("side", "RIGHT")
+
+                # Validate line is in diff
+                if path in diff_lines and line in diff_lines[path]:
+                    valid_comments.append({
+                        "path": path,
+                        "line": line,
+                        "body": c.get("body", ""),
+                        "side": side
+                    })
+                else:
+                    logger.warning(f"Skipping comment: {path}:{line} not in diff")
+
+            if valid_comments:
+                pr.create_review(
+                    commit=commit,
+                    body=body,
+                    event=event,
+                    comments=valid_comments
+                )
+                logger.info(f"Posted review with {len(valid_comments)} inline comments")
+            elif body:
+                # No valid inline comments, just post body
+                pr.create_review(body=body, event=event)
+                logger.info("Posted review without inline comments")
+
+        except GithubException as e:
+            logger.error(f"Failed to create review: {e}")
+            raise
+
+    def _get_diff_line_map(self, repo_name: str, pr_number: int) -> Dict[str, set]:
+        """Get map of file -> set of valid line numbers in diff."""
+        pr = self.get_pr(repo_name, pr_number)
+        files = pr.get_files()
+
+        line_map = {}
+        for file in files:
+            if not file.patch:
+                continue
+
+            lines = set()
+            current_line = 0
+
+            for patch_line in file.patch.split('\n'):
+                # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+                hunk_match = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@', patch_line)
+                if hunk_match:
+                    current_line = int(hunk_match.group(1))
+                    continue
+
+                if patch_line.startswith('-'):
+                    # Deleted line, don't increment
+                    continue
+                elif patch_line.startswith('+') or not patch_line.startswith('\\'):
+                    # Added or context line
+                    lines.add(current_line)
+                    current_line += 1
+
+            line_map[file.filename] = lines
+
+        return line_map
+
+    # === Labels ===
+
+    def add_labels(self, repo_name: str, pr_number: int, labels: List[str]):
+        """Add labels to a PR."""
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            pr.add_to_labels(*labels)
+            logger.info(f"Added labels to PR #{pr_number}: {labels}")
+        except GithubException as e:
+            logger.error(f"Failed to add labels: {e}")
+            raise
+
+    def remove_labels(self, repo_name: str, pr_number: int, labels: List[str]):
+        """Remove labels from a PR."""
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            for label in labels:
+                try:
+                    pr.remove_from_labels(label)
+                except GithubException:
+                    pass  # Label might not exist
+            logger.info(f"Removed labels from PR #{pr_number}: {labels}")
+        except GithubException as e:
+            logger.error(f"Failed to remove labels: {e}")
+
+    def get_repo_labels(self, repo_name: str) -> List[str]:
+        """Get all available labels in the repo."""
+        try:
+            repo = self.client.get_repo(repo_name)
+            return [label.name for label in repo.get_labels()]
+        except GithubException as e:
+            logger.error(f"Failed to get repo labels: {e}")
+            return []
+
+    # === Incremental Review ===
+
+    def get_commits_since(self, repo_name: str, pr_number: int, since_sha: str) -> List:
+        """Get commits after a specific SHA."""
+        pr = self.get_pr(repo_name, pr_number)
+        commits = list(pr.get_commits())
+
+        new_commits = []
+        found = False
+        for c in commits:
+            if found:
+                new_commits.append(c)
+            if c.sha.startswith(since_sha):
+                found = True
+
+        return new_commits
+
+    def get_diff_for_commits(self, repo_name: str, commit_shas: List[str]) -> str:
+        """Get combined diff for specific commits."""
+        repo = self.client.get_repo(repo_name)
+        diff_parts = []
+
+        for sha in commit_shas:
+            try:
+                commit = repo.get_commit(sha)
+                for file in commit.files:
+                    if file.patch:
+                        diff_parts.append(f"--- {file.filename}\n{file.patch}")
+            except GithubException as e:
+                logger.warning(f"Failed to get diff for commit {sha}: {e}")
+
+        return "\n\n".join(diff_parts)
+
+    def get_last_bot_comment(self, repo_name: str, pr_number: int, bot_marker: str = "<!-- kimi-review -->") -> Optional[Dict]:
+        """Find the last comment from this bot with review marker.
+
+        Returns dict with 'sha' and 'comment_id' if found.
+        """
+        pr = self.get_pr(repo_name, pr_number)
+        comments = list(pr.get_issue_comments())
+
+        for comment in reversed(comments):
+            if bot_marker in comment.body:
+                # Extract SHA from marker: <!-- kimi-review:sha=abc123 -->
+                sha_match = re.search(r'<!-- kimi-review:sha=([a-f0-9]+) -->', comment.body)
+                if sha_match:
+                    return {
+                        "sha": sha_match.group(1),
+                        "comment_id": comment.id,
+                        "created_at": comment.created_at
+                    }
+        return None

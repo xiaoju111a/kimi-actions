@@ -72,10 +72,13 @@ Use these commands in PR comments:
 | Command | Description |
 |---------|-------------|
 | `/review` | Perform code review on PR |
+| `/review --incremental` | Review only new commits since last review |
+| `/review --inline` | Post inline comments on specific code lines |
 | `/describe` | Auto-generate PR description (updates PR) |
 | `/describe --comment` | Generate description as comment |
 | `/improve` | Provide code improvement suggestions |
 | `/ask <question>` | Q&A about the PR |
+| `/labels` | Auto-generate and apply PR labels |
 | `/help` | Show help message |
 
 ## Example Output
