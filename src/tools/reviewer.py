@@ -30,10 +30,10 @@ class Reviewer(BaseTool):
 
         Args:
             incremental: Only review new commits since last review
-            inline: Post inline comments instead of single comment
+            inline: Post inline comments (default: True)
         """
         incremental = kwargs.get("incremental", False)
-        inline = kwargs.get("inline", False)
+        inline = kwargs.get("inline", True)  # Default to inline comments
 
         # Get PR info
         pr = self.github.get_pr(repo_name, pr_number)
