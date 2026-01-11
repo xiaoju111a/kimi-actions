@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: main  # Always use main branch for action code
+          ref: feat/agentic-architecture  # Use new agentic architecture branch
       
       - name: Run Kimi Action
         uses: ./
