@@ -51,6 +51,7 @@ class KimiClient:
             base_url=self.BASE_URL,
             api_key=self.api_key,
             model=self._model,
+            stream=False,  # Use non-streaming for simpler response handling
         )
 
         logger.info(f"Initialized KimiClient with model: {self._model}")
@@ -71,6 +72,7 @@ class KimiClient:
                 base_url=self.BASE_URL,
                 api_key=self.api_key,
                 model=self._model,
+                stream=False,
             )
 
     def _is_retryable_error(self, error: Exception) -> bool:
