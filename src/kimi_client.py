@@ -132,6 +132,7 @@ class KimiClient:
                     result = await generate(
                         chat_provider=self._kimi,
                         system_prompt=system_prompt or "",
+                        tools=[],  # No tools for simple chat
                         history=sdk_messages,
                     )
                     return result
