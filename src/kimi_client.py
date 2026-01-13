@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503}
 
 
+class KimiAPIError(Exception):
+    """Raised when Kimi API call fails."""
+    def __init__(self, message: str, retries: int = 0, last_error: Exception = None):
+        super().__init__(message)
+        self.retries = retries
+        self.last_error = last_error
+
+
 @dataclass
 class TokenUsage:
     """Token usage statistics."""
@@ -91,20 +99,23 @@ class KimiClient:
     def chat(
         self,
         messages: list,
-        max_tokens: int = 8192,
-        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        temperature: float = 0.2,
         retries: int = 3
     ) -> str:
         """Send chat completion request to Kimi with exponential backoff retry.
         
         Args:
             messages: Chat messages (list of dicts with 'role' and 'content')
-            max_tokens: Maximum tokens for response
-            temperature: Sampling temperature
+            max_tokens: Maximum tokens for response (default: 4096 for code review)
+            temperature: Sampling temperature (default: 0.2 for consistent output)
             retries: Number of retry attempts
         
         Returns:
             Response content string
+            
+        Raises:
+            KimiAPIError: If API call fails after all retries
         """
         # Convert dict messages to kimi-sdk Message objects
         sdk_messages = []
@@ -129,7 +140,7 @@ class KimiClient:
             try:
                 logger.info(f"Calling Kimi API (attempt {attempt + 1}/{retries + 1}, model: {self._model})")
                 
-                # Run async generate in sync context
+                # Run async generate - handle both cases: with and without existing event loop
                 async def _generate():
                     result = await generate(
                         chat_provider=self._kimi,
@@ -139,12 +150,22 @@ class KimiClient:
                     )
                     return result
                 
-                result = asyncio.run(_generate())
+                # Try to get existing event loop, create new one if none exists
+                try:
+                    loop = asyncio.get_running_loop()
+                    # We're in an async context, need to use different approach
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, _generate())
+                        result = future.result()
+                except RuntimeError:
+                    # No running event loop, safe to use asyncio.run()
+                    result = asyncio.run(_generate())
 
                 # Log token usage if available
                 if result.usage:
                     usage = result.usage
-                    prompt_tokens = getattr(usage, 'input', 0)
+                    prompt_tokens = getattr(usage, 'input', 0) or getattr(usage, 'input_other', 0)
                     completion_tokens = getattr(usage, 'output', 0)
                     total_tokens = prompt_tokens + completion_tokens
                     logger.info(
@@ -167,10 +188,10 @@ class KimiClient:
                     logger.info(f"Retrying in {delay:.2f} seconds...")
                     time.sleep(delay)
                 elif attempt < retries:
-                    # Non-retryable error
+                    # Non-retryable error, stop retrying
                     logger.error(f"Non-retryable error: {e}")
                     break
 
         error_msg = f"Kimi API call failed (after {retries} retries): {str(last_error)}"
         logger.error(error_msg)
-        return error_msg
+        raise KimiAPIError(error_msg, retries=retries, last_error=last_error)

@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
 from action_config import get_action_config
-from kimi_client import KimiClient
+from kimi_client import KimiClient, KimiAPIError
 from github_client import GitHubClient
 from token_handler import TokenHandler, DiffChunker, select_model_for_diff, DiffChunk
 from skill_loader import SkillManager, Skill
@@ -75,9 +75,9 @@ class BaseTool(ABC):
 
         self.skill_manager.load_from_repo(self.github, repo_name, ref=ref)
 
-        # Apply custom ignore patterns
+        # Apply custom ignore patterns (create new list to avoid mutation)
         if self.repo_config and self.repo_config.ignore_files:
-            self.chunker.exclude_patterns.extend(self.repo_config.ignore_files)
+            self.chunker.exclude_patterns = list(self.chunker.exclude_patterns) + self.repo_config.ignore_files
 
     def get_skill(self) -> Optional[Skill]:
         """Get the skill for this tool, respecting overrides.

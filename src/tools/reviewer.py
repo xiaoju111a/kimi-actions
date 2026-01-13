@@ -11,6 +11,7 @@ import yaml
 import uuid
 
 from tools.base import BaseTool
+from kimi_client import KimiAPIError
 from token_handler import DiffChunk
 from models import CodeSuggestion, SeverityLevel, ReviewOptions, SuggestionControl
 from suggestion_service import SuggestionService
@@ -78,7 +79,11 @@ Branch: {pr.head.ref} -> {pr.base.ref}
 Please output review results in YAML format."""
 
         # Call Kimi
-        response = self.call_kimi(system_prompt, user_prompt)
+        try:
+            response = self.call_kimi(system_prompt, user_prompt)
+        except KimiAPIError as e:
+            logger.error(f"Kimi API error: {e}")
+            return f"## 🤖 Kimi Code Review\n\n❌ {str(e)}\n\n{self.format_footer()}"
 
         # Parse and filter suggestions
         suggestions = self._parse_suggestions(response)
