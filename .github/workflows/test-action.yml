@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: feat/agentic-architecture  # Use new agentic architecture branch
+          ref: feat/kimi-sdk  # Use kimi-sdk branch
       
       - name: Run Kimi Action
         uses: ./
