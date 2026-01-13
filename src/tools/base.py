@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
 from action_config import get_action_config
-from kimi_client import KimiClient, KimiAPIError
+from kimi_client import KimiClient
 from github_client import GitHubClient
 from token_handler import TokenHandler, DiffChunker, select_model_for_diff, DiffChunk
 from skill_loader import SkillManager, Skill

@@ -152,7 +152,7 @@ class KimiClient:
                 
                 # Try to get existing event loop, create new one if none exists
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # We're in an async context, need to use different approach
                     import concurrent.futures
                     with concurrent.futures.ThreadPoolExecutor() as executor:
