@@ -279,9 +279,14 @@ Please output review results in YAML format."""
 
         # Review level
         level_text = {
-            "strict": "Review Level: Strict - Check all issues",
-            "normal": "Review Level: Normal - Focus on functional issues",
-            "gentle": "Review Level: Gentle - Only flag critical issues"
+            "strict": """Review Level: Strict - Perform thorough analysis including:
+- Thread safety and race condition detection
+- Stub/mock/simulation code detection
+- Error handling completeness
+- Cache key collision detection
+- All items in the Strict Mode Checklist""",
+            "normal": "Review Level: Normal - Focus on functional issues and common bugs",
+            "gentle": "Review Level: Gentle - Only flag critical issues that would break functionality"
         }
         parts.append(f"\n## {level_text.get(self.config.review_level, level_text['normal'])}")
 

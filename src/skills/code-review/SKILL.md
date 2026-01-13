@@ -105,6 +105,43 @@ suggestions:
 - Unnecessary memory allocation
 - Missing indexes or inefficient queries
 
+## Strict Mode Checklist
+
+When review_level is "strict", perform thorough checks for:
+
+### Thread Safety & Concurrency
+- **Shared mutable state** - Check if class attributes or global variables are modified without locks
+- **Race conditions** - Look for check-then-act patterns (e.g., `if key in dict: del dict[key]`)
+- **Lock ordering** - Multiple locks acquired in inconsistent order can cause deadlocks
+- **Atomic operations** - Operations that should be atomic but aren't (e.g., `counter += 1` without lock)
+- **Thread-local vs shared** - Data that should be thread-local but is shared
+
+### Race Condition Patterns
+- **TOCTOU (Time-of-check to time-of-use)** - Gap between checking a condition and acting on it
+- **Double-checked locking** - Broken patterns in languages without memory barriers
+- **Lazy initialization** - Multiple threads may initialize the same resource
+- **Collection modification** - Iterating while another thread modifies
+
+### Stub/Mock/Simulation Detection
+- **Placeholder implementations** - Methods that return hardcoded values or `pass`
+- **TODO/FIXME comments** - Incomplete implementations marked for later
+- **Simulated behavior** - Functions named `_simulate_*` or returning fake data
+- **Missing real implementation** - Abstract methods not properly implemented
+- **Test doubles in production** - Mock objects or stubs that shouldn't be in production code
+
+### Error Handling Completeness
+- **Bare except clauses** - `except:` or `except Exception:` that swallow errors
+- **Silent failures** - Errors caught but not logged or re-raised
+- **Missing error paths** - Functions that can fail but don't handle failures
+- **Incomplete cleanup** - Resources not released in error paths (use try/finally)
+- **Error message quality** - Generic messages that don't help debugging
+
+### Cache & Memoization Issues
+- **Cache key collisions** - Keys that don't include all relevant parameters
+- **Cache invalidation** - Stale data not properly invalidated
+- **Unbounded caches** - Caches that grow without limit
+- **Cache stampede** - Multiple threads computing the same value simultaneously
+
 ## Final Verdict
 
 At the end, provide an "overall correctness" verdict:
