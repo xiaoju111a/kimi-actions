@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: feat/kimi-sdk  # Use kimi-sdk branch
+          ref: main  # Use main branch
       
       - name: Run Kimi Action
         uses: ./
