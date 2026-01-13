@@ -82,46 +82,46 @@ Please output review results in YAML format."""
 
         # Parse and filter suggestions
         suggestions = self._parse_suggestions(response)
-        if suggestions:
-            review_options = ReviewOptions(
-                bug=self.repo_config.enable_bug if self.repo_config else True,
-                performance=self.repo_config.enable_performance if self.repo_config else True,
-                security=self.repo_config.enable_security if self.repo_config else True
-            )
-            suggestion_service = SuggestionService(SuggestionControl(
-                max_suggestions=self.config.review.num_max_findings,
-                severity_level_filter=SeverityLevel.LOW
-            ))
-            filtered, discarded = suggestion_service.process_suggestions(
-                suggestions, review_options, compressed_diff
-            )
+        
+        # Always try to format the review, even with no suggestions
+        review_options = ReviewOptions(
+            bug=self.repo_config.enable_bug if self.repo_config else True,
+            performance=self.repo_config.enable_performance if self.repo_config else True,
+            security=self.repo_config.enable_security if self.repo_config else True
+        )
+        suggestion_service = SuggestionService(SuggestionControl(
+            max_suggestions=self.config.review.num_max_findings,
+            severity_level_filter=SeverityLevel.LOW
+        ))
+        filtered, discarded = suggestion_service.process_suggestions(
+            suggestions, review_options, compressed_diff
+        )
 
-            # Post inline comments if requested
-            if inline and filtered:
-                # Format summary for review body
-                summary_comment = self._format_inline_summary(
-                    response, filtered, len(filtered),
-                    incremental=incremental, current_sha=pr.head.sha
-                )
-                
-                # Post review with body (summary) + inline comments together
-                inline_count = self._post_inline_comments(
-                    repo_name, pr_number, filtered, summary_body=summary_comment
-                )
-                if inline_count > 0:
-                    return ""  # Already posted, return empty to avoid duplicate
-                
-                # Fallback: return summary for main.py to post
-                return summary_comment
-
-            # Format and return full result (normal mode or inline fallback)
-            result = self._format_review(
-                response, filtered, discarded, excluded_chunks,
+        # Post inline comments if requested and we have suggestions
+        if inline and filtered:
+            # Format summary for review body
+            summary_comment = self._format_inline_summary(
+                response, filtered, len(filtered),
                 incremental=incremental, current_sha=pr.head.sha
             )
-            return result
+            
+            # Post review with body (summary) + inline comments together
+            inline_count = self._post_inline_comments(
+                repo_name, pr_number, filtered, summary_body=summary_comment
+            )
+            if inline_count > 0:
+                return ""  # Already posted, return empty to avoid duplicate
+            
+            # Fallback: return summary for main.py to post
+            return summary_comment
 
-        return self._format_fallback(response, pr.head.sha if incremental else None)
+        # Format and return full result (with included_chunks for file count)
+        result = self._format_review(
+            response, filtered, discarded, excluded_chunks,
+            included_chunks=included_chunks,
+            incremental=incremental, current_sha=pr.head.sha
+        )
+        return result
 
     def _get_incremental_diff(
         self, repo_name: str, pr_number: int
@@ -325,7 +325,15 @@ Please output review results in YAML format."""
                 yaml_content = response.split("```")[1].split("```")[0]
 
             data = yaml.safe_load(yaml_content)
+            if not data:
+                logger.warning("YAML parsing returned None or empty data")
+                return []
+                
             suggestions_data = data.get("suggestions", [])
+            if not suggestions_data:
+                logger.info("No suggestions in YAML response")
+                # Return empty but this is valid - no issues found
+                return []
 
             suggestions = []
             for s in suggestions_data:
@@ -345,8 +353,11 @@ Please output review results in YAML format."""
                     label=s.get("label", "bug"),
                     severity=severity
                 ))
+            logger.info(f"Parsed {len(suggestions)} suggestions from response")
             return suggestions
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to parse suggestions: {e}")
+            logger.debug(f"Response was: {response[:500]}...")
             return []
 
     def _format_review(
@@ -355,6 +366,7 @@ Please output review results in YAML format."""
         valid: List[CodeSuggestion],
         discarded: List[CodeSuggestion],
         excluded_files: List[DiffChunk] = None,
+        included_chunks: List[DiffChunk] = None,
         incremental: bool = False,
         current_sha: str = None
     ) -> str:
@@ -377,17 +389,16 @@ Please output review results in YAML format."""
         if summary:
             lines.append(f"{summary}\n")
 
-        # Key Changes (extract from suggestions)
+        # Key Changes (extract from suggestions or included chunks)
         if valid:
             lines.append("**Key Changes:**")
-            # Group by file
             files_changed = set(s.relevant_file for s in valid if s.relevant_file)
             for f in list(files_changed)[:5]:
                 lines.append(f"- `{f}`")
             lines.append("")
 
-        # Reviewed changes summary
-        total_files = len(set(s.relevant_file for s in valid + discarded if s.relevant_file))
+        # Reviewed changes summary - use included_chunks for accurate file count
+        total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in valid + discarded if s.relevant_file))
         if excluded_files:
             total_files += len(excluded_files)
         lines.append("**Reviewed changes**")
