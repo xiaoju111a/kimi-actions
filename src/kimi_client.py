@@ -1,14 +1,16 @@
-"""Kimi (Moonshot AI) API client.
+"""Kimi (Moonshot AI) API client using kimi-sdk.
 
-Simple client using OpenAI-compatible API with retry support.
+Simple client wrapper around kimi-sdk with retry support.
 Supports dynamic model switching for fallback scenarios.
 """
 
+import asyncio
 import logging
 import random
 import time
 from dataclasses import dataclass
-from openai import OpenAI
+
+from kimi_sdk import Kimi, Message, generate
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class TokenUsage:
 
 
 class KimiClient:
-    """Client for Kimi API (OpenAI-compatible).
+    """Client for Kimi API using kimi-sdk.
     
     Supports dynamic model switching for fallback scenarios.
     """
@@ -45,9 +47,10 @@ class KimiClient:
 
         self.api_key = api_key
         self._model = model
-        self.client = OpenAI(
+        self._kimi = Kimi(
+            base_url=self.BASE_URL,
             api_key=self.api_key,
-            base_url=self.BASE_URL
+            model=self._model,
         )
 
         logger.info(f"Initialized KimiClient with model: {self._model}")
@@ -63,6 +66,12 @@ class KimiClient:
         if value != self._model:
             logger.info(f"Switching model: {self._model} -> {value}")
             self._model = value
+            # Recreate Kimi instance with new model
+            self._kimi = Kimi(
+                base_url=self.BASE_URL,
+                api_key=self.api_key,
+                model=self._model,
+            )
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is retryable."""
@@ -87,7 +96,7 @@ class KimiClient:
         """Send chat completion request to Kimi with exponential backoff retry.
         
         Args:
-            messages: Chat messages
+            messages: Chat messages (list of dicts with 'role' and 'content')
             max_tokens: Maximum tokens for response
             temperature: Sampling temperature
             retries: Number of retry attempts
@@ -95,27 +104,55 @@ class KimiClient:
         Returns:
             Response content string
         """
+        # Convert dict messages to kimi-sdk Message objects
+        sdk_messages = []
+        system_prompt = None
+        
+        for msg in messages:
+            if isinstance(msg, dict):
+                role = msg["role"]
+                content = msg["content"]
+                if role == "system":
+                    system_prompt = content
+                else:
+                    sdk_messages.append(Message(role=role, content=content))
+            elif isinstance(msg, Message):
+                sdk_messages.append(msg)
+            else:
+                raise ValueError(f"Invalid message type: {type(msg)}")
+
         last_error = None
 
         for attempt in range(retries + 1):
             try:
                 logger.info(f"Calling Kimi API (attempt {attempt + 1}/{retries + 1}, model: {self._model})")
-                response = self.client.chat.completions.create(
-                    model=self._model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature
-                )
+                
+                # Run async generate in sync context
+                async def _generate():
+                    result = await generate(
+                        chat_provider=self._kimi,
+                        system_prompt=system_prompt or "",
+                        tools=[],  # No tools for simple chat
+                        history=sdk_messages,
+                    )
+                    return result
+                
+                result = asyncio.run(_generate())
 
-                # Log token usage
-                if response.usage:
+                # Log token usage if available
+                if result.usage:
+                    usage = result.usage
+                    prompt_tokens = getattr(usage, 'input', 0)
+                    completion_tokens = getattr(usage, 'output', 0)
+                    total_tokens = prompt_tokens + completion_tokens
                     logger.info(
-                        f"Token usage - prompt: {response.usage.prompt_tokens}, "
-                        f"completion: {response.usage.completion_tokens}, "
-                        f"total: {response.usage.total_tokens}"
+                        f"Token usage - prompt: {prompt_tokens}, "
+                        f"completion: {completion_tokens}, "
+                        f"total: {total_tokens}"
                     )
 
-                return response.choices[0].message.content
+                # Extract text from response message
+                return result.message.extract_text() or ""
 
             except Exception as e:
                 last_error = e
