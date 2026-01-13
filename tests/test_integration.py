@@ -299,23 +299,26 @@ class TestKimiClientIntegration:
         """Test that client retries on rate limit."""
         from kimi_client import KimiClient
 
-        with patch('kimi_client.OpenAI') as mock_openai:
-            mock_client = Mock()
-            mock_openai.return_value = mock_client
+        with patch('kimi_client.Kimi') as mock_kimi_class, \
+             patch('kimi_client.generate') as mock_generate:
+            mock_kimi = Mock()
+            mock_kimi_class.return_value = mock_kimi
 
             # First call fails with rate limit, second succeeds
-            mock_response = Mock()
-            mock_response.choices = [Mock(message=Mock(content="Success"))]
-            mock_response.usage = Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+            mock_message = Mock()
+            mock_message.extract_text.return_value = "Success"
+            mock_result = Mock()
+            mock_result.message = mock_message
+            mock_result.usage = Mock(input=10, output=5)
 
             call_count = [0]
-            def side_effect(*args, **kwargs):
+            async def side_effect(*args, **kwargs):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     raise Exception("429 rate limit exceeded")
-                return mock_response
+                return mock_result
 
-            mock_client.chat.completions.create.side_effect = side_effect
+            mock_generate.side_effect = side_effect
 
             client = KimiClient("test-key")
 
