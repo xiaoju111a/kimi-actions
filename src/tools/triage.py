@@ -7,7 +7,7 @@ and suggest appropriate labels and priority.
 import json
 import logging
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 from tools.base import BaseTool
 
@@ -263,9 +263,9 @@ Rules:
             "low": "🟢"
         }
 
-        lines.append(f"### Classification\n")
-        lines.append(f"| Attribute | Value |")
-        lines.append(f"|-----------|-------|")
+        lines.append("### Classification\n")
+        lines.append("| Attribute | Value |")
+        lines.append("|-----------|-------|")
         lines.append(f"| **Type** | {type_emoji.get(issue_type, '📋')} `{issue_type}` |")
         lines.append(f"| **Priority** | {priority_emoji.get(priority, '🟡')} `{priority}` |")
         lines.append(f"| **Confidence** | `{confidence}` |")
@@ -280,9 +280,9 @@ Rules:
         labels = result.get("labels", [])
         if labels:
             if applied:
-                lines.append(f"### Labels Applied ✅\n")
+                lines.append("### Labels Applied ✅\n")
             else:
-                lines.append(f"### Suggested Labels\n")
+                lines.append("### Suggested Labels\n")
 
             lines.append(" ".join([f"`{label}`" for label in labels]))
             lines.append("")
