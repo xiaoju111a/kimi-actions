@@ -105,19 +105,25 @@ Please output review results in YAML format."""
         # Calculate total files reviewed
         total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
 
-        # Format the summary (Copilot style)
-        inline_count = len(filtered) if filtered else 0
-        summary = self._format_inline_summary(
-            response, filtered, inline_count,
-            total_files=total_files,
-            incremental=incremental, current_sha=pr.head.sha
-        )
-
         # Post inline comments with summary as review body
+        posted_count = 0
         if inline and filtered:
+            # Format summary first (with expected count)
+            summary = self._format_inline_summary(
+                response, filtered, len(filtered),
+                total_files=total_files,
+                incremental=incremental, current_sha=pr.head.sha
+            )
             posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
             if posted_count > 0:
                 return ""  # Already posted with summary, return empty to avoid duplicate
+        
+        # Fallback: format summary with actual posted count (0 if failed or no suggestions)
+        summary = self._format_inline_summary(
+            response, filtered, posted_count,
+            total_files=total_files,
+            incremental=incremental, current_sha=pr.head.sha
+        )
         
         # Return summary for main.py to post as regular comment
         return summary
@@ -162,9 +168,11 @@ Please output review results in YAML format."""
         """Post inline comments with GitHub native suggestion format."""
         comments = []
         footer = f"\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `{self.kimi.model}`</sub>"
+        skipped = []
 
         for s in suggestions:
             if not s.relevant_file or not s.relevant_lines_start:
+                skipped.append(f"Missing file/line: {s.relevant_file}:{s.relevant_lines_start}")
                 continue
 
             # Build comment body with description
@@ -189,19 +197,29 @@ Please output review results in YAML format."""
                 comment["start_line"] = s.relevant_lines_start
             
             comments.append(comment)
+            logger.debug(f"Prepared comment for {s.relevant_file}:{s.relevant_lines_start}-{s.relevant_lines_end}")
+
+        if skipped:
+            logger.warning(f"Skipped {len(skipped)} suggestions: {skipped}")
 
         if comments:
             try:
+                logger.info(f"Posting {len(comments)} inline comments to {repo_name}#{pr_number}")
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments,
                     body=summary_body,  # Summary as review body
                     event="COMMENT"
                 )
-                logger.info(f"Posted {len(comments)} inline comments with summary")
+                logger.info(f"Successfully posted {len(comments)} inline comments")
                 return len(comments)
             except Exception as e:
                 logger.error(f"Failed to post inline comments: {e}")
+                # Log the first comment for debugging
+                if comments:
+                    logger.error(f"First comment was for: {comments[0].get('path')}:{comments[0].get('line')}")
                 return 0
+        else:
+            logger.warning(f"No valid comments to post (suggestions: {len(suggestions)}, skipped: {len(skipped)})")
         return 0
 
     def _format_inline_summary(
@@ -262,7 +280,7 @@ Please output review results in YAML format."""
             
             if file_summaries:
                 lines.append("<details>")
-                lines.append("<summary>▼ Show a summary per file</summary>\n")
+                lines.append("<summary>Show a summary per file</summary>\n")
                 lines.append("| File | Description |")
                 lines.append("|------|-------------|")
                 for file_path, summaries in file_summaries.items():
