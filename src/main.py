@@ -208,7 +208,11 @@ def handle_comment_event(event: dict, config: ActionConfig):
             reviewer = Reviewer(kimi, github)
             # Check for flags
             incremental = "--incremental" in args or "-i" in args
-            result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=True)
+            # Build command string for quote
+            original_command = "/review"
+            if args:
+                original_command += f" {args}"
+            result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=True, command_quote=original_command)
 
         elif command == "describe":
             describe = Describe(kimi, github)

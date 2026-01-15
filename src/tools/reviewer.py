@@ -32,9 +32,11 @@ class Reviewer(BaseTool):
         Args:
             incremental: Only review new commits since last review
             inline: Post inline comments (default: True)
+            command_quote: Original command string to quote in output
         """
         incremental = kwargs.get("incremental", False)
         inline = kwargs.get("inline", True)  # Default to inline comments
+        command_quote = kwargs.get("command_quote", "")
 
         # Get PR info
         pr = self.github.get_pr(repo_name, pr_number)
@@ -116,7 +118,8 @@ Please output review results in YAML format."""
                 response, filtered, len(filtered),
                 total_files=total_files,
                 included_chunks=included_chunks,
-                incremental=incremental, current_sha=pr.head.sha
+                incremental=incremental, current_sha=pr.head.sha,
+                command_quote=command_quote
             )
             posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
             if posted_count > 0:
@@ -130,7 +133,8 @@ Please output review results in YAML format."""
             response, filtered, posted_count,
             total_files=total_files,
             included_chunks=included_chunks,
-            incremental=incremental, current_sha=pr.head.sha
+            incremental=incremental, current_sha=pr.head.sha,
+            command_quote=command_quote
         )
         
         # Return summary for main.py to post as regular comment
@@ -238,7 +242,8 @@ Please output review results in YAML format."""
         total_files: int = 0,
         included_chunks: List[DiffChunk] = None,
         incremental: bool = False,
-        current_sha: str = None
+        current_sha: str = None,
+        command_quote: str = ""
     ) -> str:
         """Format a short summary when inline comments were posted."""
         try:
@@ -261,6 +266,11 @@ Please output review results in YAML format."""
             file_summaries = {}
 
         lines = []
+
+        # Add command quote if provided
+        if command_quote:
+            lines.append(f"> {command_quote}")
+            lines.append("")
 
         # Pull request overview
         lines.append("### 🌗 Pull request overview")
