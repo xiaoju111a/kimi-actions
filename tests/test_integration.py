@@ -163,7 +163,7 @@ class TestReviewerIntegration:
         result = reviewer.run("owner/repo", 42)
 
         # Result could be empty (inline posted) or summary (fallback)
-        assert result == "" or "Kimi Code Review" in result
+        assert result == "" or "Pull request overview" in result
 
     def test_review_handles_empty_diff(self, mock_action_config):
         """Test reviewer handles empty diff gracefully."""

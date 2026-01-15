@@ -105,23 +105,22 @@ Please output review results in YAML format."""
         # Calculate total files reviewed
         total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
 
-        # Post inline comments if requested and we have suggestions
-        inline_count = 0
-        if inline and filtered:
-            inline_count = self._post_inline_comments(repo_name, pr_number, filtered)
-
-        # Always use the same format (Copilot style)
-        result = self._format_inline_summary(
+        # Format the summary (Copilot style)
+        inline_count = len(filtered) if filtered else 0
+        summary = self._format_inline_summary(
             response, filtered, inline_count,
             total_files=total_files,
             incremental=incremental, current_sha=pr.head.sha
         )
+
+        # Post inline comments with summary as review body
+        if inline and filtered:
+            posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
+            if posted_count > 0:
+                return ""  # Already posted with summary, return empty to avoid duplicate
         
-        # If inline comments were posted successfully, the summary is already in the review body
-        if inline_count > 0:
-            return ""  # Already posted, return empty to avoid duplicate
-        
-        return result
+        # Return summary for main.py to post as regular comment
+        return summary
 
     def _get_incremental_diff(
         self, repo_name: str, pr_number: int
@@ -157,7 +156,8 @@ Please output review results in YAML format."""
         return compressed, included, excluded, last_sha
 
     def _post_inline_comments(
-        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion]
+        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion],
+        summary_body: str = ""
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
@@ -194,10 +194,10 @@ Please output review results in YAML format."""
             try:
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments,
-                    body="",  # Summary posted separately
+                    body=summary_body,  # Summary as review body
                     event="COMMENT"
                 )
-                logger.info(f"Posted {len(comments)} inline comments")
+                logger.info(f"Posted {len(comments)} inline comments with summary")
                 return len(comments)
             except Exception as e:
                 logger.error(f"Failed to post inline comments: {e}")
