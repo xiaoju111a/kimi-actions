@@ -248,8 +248,28 @@ Please output review results in YAML format."""
         # Reviewed changes - Copilot style
         files_reviewed = total_files if total_files > 0 else len(set(s.relevant_file for s in suggestions if s.relevant_file))
         lines.append("**Reviewed changes**")
-        lines.append(f"Kimi reviewed {files_reviewed} changed files in this pull request and generated {inline_count} comments.")
-        lines.append(f"✅ Posted {inline_count} inline comments on specific code lines.\n")
+        lines.append(f"Kimi reviewed {files_reviewed} changed files in this pull request and generated {inline_count} comments.\n")
+
+        # Show a summary per file (collapsible)
+        if suggestions:
+            file_summaries = {}
+            for s in suggestions:
+                if s.relevant_file:
+                    if s.relevant_file not in file_summaries:
+                        file_summaries[s.relevant_file] = []
+                    summary_text = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                    file_summaries[s.relevant_file].append(summary_text)
+            
+            if file_summaries:
+                lines.append("<details>")
+                lines.append("<summary>▼ Show a summary per file</summary>\n")
+                lines.append("| File | Description |")
+                lines.append("|------|-------------|")
+                for file_path, summaries in file_summaries.items():
+                    # Combine summaries for the same file
+                    desc = summaries[0] if summaries else "Code changes"
+                    lines.append(f"| `{file_path}` | {desc} |")
+                lines.append("\n</details>\n")
 
         # Issues found - brief list
         if suggestions:
