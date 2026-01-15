@@ -249,8 +249,16 @@ Please output review results in YAML format."""
                 yaml_content = response.split("```")[1].split("```")[0]
             data = yaml.safe_load(yaml_content)
             summary = data.get("summary", "").strip()
+            # Get file descriptions from AI response
+            file_summaries = {}
+            for fs in data.get("file_summaries", []):
+                f = fs.get("file", "")
+                desc = fs.get("description", "")
+                if f and desc:
+                    file_summaries[f] = desc
         except Exception:
             summary = ""
+            file_summaries = {}
 
         lines = []
 
@@ -273,17 +281,18 @@ Please output review results in YAML format."""
             lines.append("| File | Description |")
             lines.append("|------|-------------|")
             for chunk in included_chunks:
-                # Generate description based on change type only
-                change_desc = {
-                    "added": "New file",
-                    "deleted": "File removed", 
-                    "modified": "Code changes",
-                    "renamed": "File renamed"
-                }.get(chunk.change_type, "Code changes")
-                
-                if chunk.language:
-                    change_desc = f"{change_desc} ({chunk.language})"
-                lines.append(f"| `{chunk.filename}` | {change_desc} |")
+                # Use AI description if available, otherwise fallback to change type
+                if chunk.filename in file_summaries:
+                    desc = file_summaries[chunk.filename]
+                else:
+                    change_desc = {
+                        "added": "New file",
+                        "deleted": "File removed", 
+                        "modified": "Code changes",
+                        "renamed": "File renamed"
+                    }.get(chunk.change_type, "Code changes")
+                    desc = f"{change_desc} ({chunk.language})" if chunk.language else change_desc
+                lines.append(f"| `{chunk.filename}` | {desc} |")
             lines.append("\n</details>\n")
 
         # Issues found - brief list

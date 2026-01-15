@@ -64,28 +64,34 @@ First, provide a PR Overview section summarizing the changes:
 ```markdown
 ## Pull Request Overview
 
-This PR [brief description of what the PR does].
+This PR [2-3 sentences describing what the PR does, the main functionality added/modified, and any notable implementation details].
 
 ### Key Changes:
-- [Change 1 description]
-- [Change 2 description]
-- [Change 3 description]
+- [Specific change 1 with file/component affected]
+- [Specific change 2 with file/component affected]
+- [Specific change 3 with file/component affected]
 
 ### Reviewed Files:
 | File | Description |
 |------|-------------|
-| path/to/file1.py | Brief description of changes |
-| path/to/file2.py | Brief description of changes |
+| path/to/file1.py | What this file adds/modifies (functionality, not issues) |
+| path/to/file2.py | What this file adds/modifies (functionality, not issues) |
 ```
 
 Then provide the review results in YAML format:
 
 ```yaml
 summary: |
-  One sentence summary of PR quality and key findings
+  2-3 sentences describing what this PR does, the main changes introduced,
+  and overall assessment of code quality. Be specific about the functionality added/modified.
 score: 85
 estimated_effort: 3
 overall_correctness: "correct|incorrect"
+file_summaries:
+  - file: "path/to/file1.py"
+    description: "Brief description of what this file change does (not issues, but functionality)"
+  - file: "path/to/file2.py"
+    description: "Brief description of what this file change does"
 suggestions:
   - relevant_file: "path/to/file.py"
     language: "python"
