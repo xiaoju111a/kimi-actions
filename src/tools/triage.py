@@ -397,10 +397,12 @@ Rules:
             recs.append("- [ ] Check for related issues")
             if priority in ["critical", "high"]:
                 recs.append("- [ ] **Prioritize** - This appears to be a high-impact bug")
-        elif issue_type == "feature":
+        elif issue_type in ["feature", "enhancement"]:
             recs.append("- [ ] Evaluate feature fit with project roadmap")
             recs.append("- [ ] Gather community feedback")
             recs.append("- [ ] Consider breaking into smaller tasks")
+            if priority in ["critical", "high"]:
+                recs.append("- [ ] **High demand** - Consider prioritizing this feature")
         elif issue_type == "question":
             recs.append("- [ ] Check if answered in documentation")
             recs.append("- [ ] Consider adding to FAQ if common")
@@ -408,6 +410,10 @@ Rules:
         elif issue_type == "documentation":
             recs.append("- [ ] Good candidate for community contribution")
             recs.append("- [ ] Consider adding `good first issue` label")
+        else:
+            # Default recommendations for unknown types
+            recs.append("- [ ] Review and categorize appropriately")
+            recs.append("- [ ] Check for duplicates")
 
         recs.append("")
         return "\n".join(recs)
