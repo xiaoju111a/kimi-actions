@@ -104,9 +104,13 @@ Please output review results in YAML format."""
 
         # Post inline comments if requested and we have suggestions
         if inline and filtered:
+            # Calculate total files reviewed
+            total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
+            
             # Format summary for review body
             summary_comment = self._format_inline_summary(
                 response, filtered, len(filtered),
+                total_files=total_files,
                 incremental=incremental, current_sha=pr.head.sha
             )
             
@@ -215,6 +219,7 @@ Please output review results in YAML format."""
         response: str,
         suggestions: List[CodeSuggestion],
         inline_count: int,
+        total_files: int = 0,
         incremental: bool = False,
         current_sha: str = None
     ) -> str:
@@ -226,60 +231,45 @@ Please output review results in YAML format."""
             elif "```" in response:
                 yaml_content = response.split("```")[1].split("```")[0]
             data = yaml.safe_load(yaml_content)
-            score = data.get("score", "N/A")
             summary = data.get("summary", "").strip()
         except Exception:
-            score = "N/A"
             summary = ""
 
-        lines = ["## 🌗 Kimi Code Review\n"]
-
-        if incremental:
-            lines.append("*📝 Incremental review (new commits only)*\n")
+        lines = []
 
         # Pull request overview
-        lines.append("### Pull Request Overview\n")
+        lines.append("### 🌗 Pull request overview")
         if summary:
             lines.append(f"{summary}\n")
+        else:
+            lines.append("Code review completed.\n")
 
-        # Key Changes
+        # Key Changes - list files with issues
         if suggestions:
             files_changed = list(set(s.relevant_file for s in suggestions if s.relevant_file))
             if files_changed:
                 lines.append("**Key Changes:**")
                 for f in files_changed[:5]:
                     lines.append(f"- `{f}`")
+                if len(files_changed) > 5:
+                    lines.append(f"- ... and {len(files_changed) - 5} more files")
                 lines.append("")
 
-        # Reviewed files table
-        if suggestions:
-            lines.append("**Reviewed Files:**")
-            lines.append("| File | Description |")
-            lines.append("|------|-------------|")
-            file_issues = {}
-            for s in suggestions:
-                if s.relevant_file:
-                    if s.relevant_file not in file_issues:
-                        file_issues[s.relevant_file] = []
-                    file_issues[s.relevant_file].append(s.one_sentence_summary)
-            for f, issues in list(file_issues.items())[:5]:
-                desc = issues[0] if issues else "Code changes"
-                lines.append(f"| `{f}` | {desc} |")
-            lines.append("")
+        # Reviewed changes - Copilot style
+        files_reviewed = total_files if total_files > 0 else len(set(s.relevant_file for s in suggestions if s.relevant_file))
+        lines.append("**Reviewed changes**")
+        lines.append(f"Kimi reviewed {files_reviewed} changed files in this pull request and generated {inline_count} comments.")
+        lines.append(f"✅ Posted {inline_count} inline comments on specific code lines.\n")
 
-        lines.append("---\n")
-        lines.append(f"✅ Posted **{inline_count}** inline comments on specific code lines.\n")
-        lines.append(f"**Code Score**: {score}/100\n")
-
-        # List issues briefly
+        # Issues found - brief list
         if suggestions:
             lines.append("**Issues found:**")
             sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
             for s in suggestions[:5]:
                 icon = sev_icons.get(s.severity.value, "⚪")
                 file_name = s.relevant_file or "unknown"
-                summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
-                lines.append(f"- {icon} `{file_name}`: {summary}")
+                issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                lines.append(f"- {icon} `{file_name}`: {issue_summary}")
             if len(suggestions) > 5:
                 lines.append(f"- ... and {len(suggestions) - 5} more")
             lines.append("")
