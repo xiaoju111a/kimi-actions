@@ -146,7 +146,7 @@ jobs:
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          auto_review: 'true'
+          auto_review: 'false'
 ```
 
 ## Commands
