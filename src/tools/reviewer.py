@@ -83,7 +83,7 @@ Please output review results in YAML format."""
             response = self.call_kimi(system_prompt, user_prompt)
         except KimiAPIError as e:
             logger.error(f"Kimi API error: {e}")
-            return f"## 🤖 Kimi Code Review\n\n❌ {str(e)}\n\n{self.format_footer()}"
+            return f"## 🌗 Kimi Code Review\n\n❌ {str(e)}\n\n{self.format_footer()}"
 
         # Parse and filter suggestions
         suggestions = self._parse_suggestions(response)
@@ -232,7 +232,7 @@ Please output review results in YAML format."""
             score = "N/A"
             summary = ""
 
-        lines = ["## 🤖 Kimi Code Review\n"]
+        lines = ["## 🌗 Kimi Code Review\n"]
 
         if incremental:
             lines.append("*📝 Incremental review (new commits only)*\n")
@@ -513,7 +513,7 @@ Please output review results in YAML format."""
             summary = data.get("summary", "").strip()
             score = data.get("score", "N/A")
             
-            lines = ["## 🤖 Kimi Code Review\n"]
+            lines = ["## 🌗 Kimi Code Review\n"]
             lines.append("### ✅ No issues found\n")
             if summary:
                 lines.append(f"**Summary**: {summary}\n")
@@ -526,7 +526,7 @@ Please output review results in YAML format."""
             return "\n".join(lines)
         except Exception:
             # True fallback - just show raw response
-            result = f"## 🤖 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
+            result = f"## 🌗 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
             if current_sha:
                 result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
             return result

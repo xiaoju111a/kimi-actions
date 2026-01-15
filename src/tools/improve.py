@@ -50,16 +50,16 @@ Please provide code improvement suggestions."""
             suggestions = data.get("suggestions", [])
 
             if not suggestions:
-                return f"## 🤖 Kimi Code Suggestions\n\n✅ **Code quality is good!**\n\n{self.format_footer()}"
+                return f"## 🌗 Kimi Code Suggestions\n\n✅ **Code quality is good!**\n\n{self.format_footer()}"
 
             return self._format_structured(suggestions)
 
         except Exception:
-            return f"## 🤖 Kimi Code Suggestions\n\n{response}\n\n{self.format_footer()}"
+            return f"## 🌗 Kimi Code Suggestions\n\n{response}\n\n{self.format_footer()}"
 
     def _format_structured(self, suggestions: List[dict]) -> str:
         """Format structured suggestions."""
-        lines = ["## 🤖 Kimi Code Suggestions\n"]
+        lines = ["## 🌗 Kimi Code Suggestions\n"]
 
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         suggestions = sorted(suggestions, key=lambda x: severity_order.get(x.get("severity", "medium"), 2))

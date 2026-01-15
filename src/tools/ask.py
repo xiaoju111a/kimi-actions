@@ -54,7 +54,7 @@ Please answer the question above."""
 
         # Compact format for inline comments (GitHub UI already shows code context)
         if inline:
-            return f"""## 🤖 Kimi Answer
+            return f"""## 🌗 Kimi Answer
 
 {response}
 
@@ -62,7 +62,7 @@ Please answer the question above."""
 """
 
         # Full format for regular comments
-        return f"""## 🤖 Kimi Answer
+        return f"""## 🌗 Kimi Answer
 
 {response}
 

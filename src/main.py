@@ -260,7 +260,7 @@ def handle_comment_event(event: dict, config: ActionConfig):
 
 def get_help_message() -> str:
     """Get help message with available commands."""
-    return """## 🤖 Kimi Actions Help
+    return """## 🌗 Kimi Actions Help
 
 ### Available Commands
 

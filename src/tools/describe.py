@@ -113,4 +113,4 @@ Please generate PR description."""
     def generate_comment(self, repo_name: str, pr_number: int) -> str:
         """Generate description as a comment."""
         title, body = self.run(repo_name, pr_number, update_pr=False)
-        return f"## 🤖 Kimi PR Description\n\n### Suggested Title\n{title}\n\n### Suggested Description\n{body}"
+        return f"## 🌗 Kimi PR Description\n\n### Suggested Title\n{title}\n\n### Suggested Description\n{body}"

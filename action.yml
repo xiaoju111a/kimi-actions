@@ -2,8 +2,8 @@ name: 'Kimi Code Review'
 description: 'AI-powered code review using Kimi (Moonshot AI) - supports /review, /describe, /improve, /ask commands'
 author: 'xiaoju111a'
 branding:
-  icon: 'eye'
-  color: 'purple'
+  icon: 'star'
+  color: 'blue'
 
 inputs:
   kimi_api_key:
