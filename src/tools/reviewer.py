@@ -167,7 +167,7 @@ Please output review results in YAML format."""
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
-        footer = f"\n\n---\n*Powered by Kimi | Model: {self.kimi.model}*"
+        footer = f"\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `{self.kimi.model}`</sub>"
 
         for s in suggestions:
             if not s.relevant_file or not s.relevant_lines_start:
@@ -277,7 +277,9 @@ Please output review results in YAML format."""
             sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
             for s in suggestions[:5]:
                 icon = sev_icons.get(s.severity.value, "⚪")
-                lines.append(f"- {icon} `{s.relevant_file}`: {s.one_sentence_summary}")
+                file_name = s.relevant_file or "unknown"
+                summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                lines.append(f"- {icon} `{file_name}`: {summary}")
             if len(suggestions) > 5:
                 lines.append(f"- ... and {len(suggestions) - 5} more")
             lines.append("")
