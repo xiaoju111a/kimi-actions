@@ -249,16 +249,8 @@ Please output review results in YAML format."""
                 yaml_content = response.split("```")[1].split("```")[0]
             data = yaml.safe_load(yaml_content)
             summary = data.get("summary", "").strip()
-            # Get file descriptions from AI response if available
-            file_descriptions = {}
-            for s in data.get("suggestions", []):
-                f = s.get("relevant_file", "")
-                desc = s.get("one_sentence_summary", "")
-                if f and desc and f not in file_descriptions:
-                    file_descriptions[f] = desc
         except Exception:
             summary = ""
-            file_descriptions = {}
 
         lines = []
 
@@ -281,7 +273,7 @@ Please output review results in YAML format."""
             lines.append("| File | Description |")
             lines.append("|------|-------------|")
             for chunk in included_chunks:
-                # Generate description based on change type
+                # Generate description based on change type only
                 change_desc = {
                     "added": "New file",
                     "deleted": "File removed", 
@@ -289,11 +281,9 @@ Please output review results in YAML format."""
                     "renamed": "File renamed"
                 }.get(chunk.change_type, "Code changes")
                 
-                # Use AI description if available, otherwise use change type
-                desc = file_descriptions.get(chunk.filename, change_desc)
                 if chunk.language:
-                    desc = f"{desc} ({chunk.language})"
-                lines.append(f"| `{chunk.filename}` | {desc} |")
+                    change_desc = f"{change_desc} ({chunk.language})"
+                lines.append(f"| `{chunk.filename}` | {change_desc} |")
             lines.append("\n</details>\n")
 
         # Issues found - brief list
