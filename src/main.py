@@ -9,7 +9,7 @@ import sys
 from action_config import ActionConfig
 from kimi_client import KimiClient
 from github_client import GitHubClient
-from tools import Reviewer, Describe, Improve, Ask, Labels
+from tools import Reviewer, Describe, Improve, Ask, Labels, Triage
 
 # Configure logging
 logging.basicConfig(
@@ -236,6 +236,9 @@ def handle_comment_event(event: dict, config: ActionConfig):
         elif command == "help":
             result = get_help_message()
 
+        elif command == "triage":
+            result = "❌ `/triage` command is only available for Issues, not Pull Requests.\n\nUse `/labels` to auto-generate PR labels instead."
+
         else:
             result = f"❌ Unknown command: `/{command}`\n\nUse `/help` to see available commands."
 
@@ -256,6 +259,144 @@ def handle_comment_event(event: dict, config: ActionConfig):
             logger.error(f"Failed to post result: {e}")
 
     logger.info("Done!")
+
+
+def handle_issue_event(event: dict, config: ActionConfig):
+    """Handle issues event (auto triage on issue open)."""
+    action = event.get("action")
+    if action not in ["opened", "reopened"]:
+        return
+
+    issue = event.get("issue", {})
+    issue_number = issue.get("number")
+    repo_name = event.get("repository", {}).get("full_name")
+
+    # Skip if this is a PR (PRs are also issues in GitHub API)
+    if "pull_request" in issue:
+        logger.info("This is a PR, skipping issue handler")
+        return
+
+    logger.info(f"Issue #{issue_number} in {repo_name} - action: {action}")
+
+    # Initialize clients
+    try:
+        kimi = KimiClient(config.kimi_api_key, config.model)
+        github = GitHubClient(config.github_token)
+    except Exception as e:
+        logger.error(f"Failed to initialize clients: {e}")
+        return
+
+    # Auto triage on issue open
+    auto_triage = get_input("auto_triage", "false").lower() == "true"
+
+    if auto_triage:
+        try:
+            logger.info("Running auto triage...")
+            triage = Triage(kimi, github)
+            result = triage.run(repo_name, issue_number, apply_labels=True)
+            github.post_issue_comment(repo_name, issue_number, result)
+            logger.info("Done!")
+        except Exception as e:
+            logger.error(f"Error triaging issue: {e}")
+            try:
+                github.post_issue_comment(repo_name, issue_number, f"❌ Error triaging issue: {str(e)}")
+            except Exception:
+                pass
+
+
+def handle_issue_comment_event(event: dict, config: ActionConfig):
+    """Handle issue_comment event on non-PR issues (command trigger)."""
+    action = event.get("action")
+    if action not in ["created", "edited"]:
+        return
+
+    comment = event.get("comment", {})
+    comment_body = comment.get("body", "")
+
+    # Check if this is NOT a PR comment (handle regular issues)
+    issue = event.get("issue", {})
+    if "pull_request" in issue:
+        # This is a PR comment, let handle_comment_event handle it
+        return
+
+    # Parse command
+    command, args = parse_command(comment_body)
+    if not command:
+        return
+
+    issue_number = issue.get("number")
+    repo_name = event.get("repository", {}).get("full_name")
+
+    logger.info(f"Issue command: /{command} {args}")
+    logger.info(f"Issue #{issue_number} in {repo_name}")
+
+    # Initialize clients
+    try:
+        kimi = KimiClient(config.kimi_api_key, config.model)
+        github = GitHubClient(config.github_token)
+    except Exception as e:
+        logger.error(f"Failed to initialize clients: {e}")
+        return
+
+    # Add reaction to show we're processing
+    github.add_issue_reaction(repo_name, issue_number, comment.get("id"), "eyes")
+
+    # Handle commands
+    result = None
+
+    try:
+        if command == "triage":
+            triage = Triage(kimi, github)
+            # Check for --no-apply flag
+            apply_labels = "--no-apply" not in args and "-n" not in args
+            result = triage.run(repo_name, issue_number, apply_labels=apply_labels)
+
+        elif command == "help":
+            result = get_issue_help_message()
+
+        else:
+            result = f"❌ Unknown command: `/{command}`\n\nUse `/help` to see available commands for issues."
+
+    except Exception as e:
+        logger.error(f"Error handling command /{command}: {e}")
+        result = f"❌ Error executing command: {str(e)}"
+
+    # Post result with command quote
+    if result:
+        try:
+            original_command = f"/{command}"
+            if args:
+                original_command += f" {args}"
+            quoted_result = f"> {original_command}\n\n{result}"
+            github.post_issue_comment(repo_name, issue_number, quoted_result)
+        except Exception as e:
+            logger.error(f"Failed to post result: {e}")
+
+    logger.info("Done!")
+
+
+def get_issue_help_message() -> str:
+    """Get help message for issue commands."""
+    return """## 🌗 Kimi Actions Help (Issues)
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `/triage` | Auto-classify issue type and suggest labels |
+| `/triage --no-apply` | Classify without applying labels |
+| `/help` | Show this help message |
+
+### Examples
+
+```bash
+/triage
+/triage --no-apply
+```
+
+---
+<sub>Powered by [Kimi](https://kimi.moonshot.cn/)</sub>
+"""
 
 
 def get_help_message() -> str:
@@ -323,7 +464,13 @@ def main():
     if event_name in ["pull_request", "pull_request_target"]:
         handle_pr_event(event, config)
     elif event_name == "issue_comment":
+        # issue_comment fires for both PR and Issue comments
+        # Try issue handler first (it will skip if it's a PR)
+        handle_issue_comment_event(event, config)
+        # Then try PR handler (it will skip if it's not a PR)
         handle_comment_event(event, config)
+    elif event_name == "issues":
+        handle_issue_event(event, config)
     elif event_name == "pull_request_review_comment":
         handle_review_comment_event(event, config)
     else:

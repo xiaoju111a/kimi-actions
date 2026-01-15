@@ -272,3 +272,43 @@ class GitHubClient:
                         "created_at": comment.created_at
                     }
         return None
+
+    # === Issue Operations ===
+
+    def get_issue(self, repo_name: str, issue_number: int):
+        """Get issue object."""
+        try:
+            repo = self.client.get_repo(repo_name)
+            return repo.get_issue(issue_number)
+        except GithubException as e:
+            logger.error(f"Failed to get Issue #{issue_number} from {repo_name}: {e}")
+            raise
+
+    def post_issue_comment(self, repo_name: str, issue_number: int, body: str):
+        """Post a comment on an issue."""
+        try:
+            issue = self.get_issue(repo_name, issue_number)
+            issue.create_comment(body)
+            logger.info(f"Posted comment to Issue #{issue_number}")
+        except GithubException as e:
+            logger.error(f"Failed to post comment to Issue #{issue_number}: {e}")
+            raise
+
+    def add_issue_reaction(self, repo_name: str, issue_number: int, comment_id: int, reaction: str = "eyes"):
+        """Add reaction to an issue comment."""
+        try:
+            repo = self.client.get_repo(repo_name)
+            comment = repo.get_issue(issue_number).get_comment(comment_id)
+            comment.create_reaction(reaction)
+        except GithubException as e:
+            logger.warning(f"Failed to add reaction to issue comment: {e}")
+
+    def add_issue_labels(self, repo_name: str, issue_number: int, labels: List[str]):
+        """Add labels to an issue."""
+        try:
+            issue = self.get_issue(repo_name, issue_number)
+            issue.add_to_labels(*labels)
+            logger.info(f"Added labels to Issue #{issue_number}: {labels}")
+        except GithubException as e:
+            logger.error(f"Failed to add labels to issue: {e}")
+            raise

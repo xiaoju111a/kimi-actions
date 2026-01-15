@@ -1,5 +1,5 @@
 name: 'Kimi Code Review'
-description: 'AI-powered code review using Kimi (Moonshot AI) - supports /review, /describe, /improve, /ask commands'
+description: 'AI-powered code review using Kimi (Moonshot AI) - supports /review, /describe, /improve, /ask, /triage commands'
 author: 'xiaoju111a'
 branding:
   icon: 'star'
@@ -42,6 +42,10 @@ inputs:
     default: 'false'
   auto_improve:
     description: 'Auto suggest improvements on PR open/sync'
+    required: false
+    default: 'false'
+  auto_triage:
+    description: 'Auto triage issues on open (classify type and suggest labels)'
     required: false
     default: 'false'
 
