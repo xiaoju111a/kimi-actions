@@ -232,11 +232,15 @@ class TestSuggestionService:
             ),
         ]
 
-        patch = "+old_function()\n-something"
+        patch = """--- a/main.py
++++ b/main.py
++old_function()
+-something"""
         valid = service._validate_against_diff(suggestions, patch)
 
-        assert len(valid) == 1
-        assert valid[0].existing_code == "old_function()"
+        # Relaxed validation: both pass because file is in diff
+        assert len(valid) == 2
+        assert all(s.relevant_file == "main.py" for s in valid)
 
     def test_validate_against_diff_no_existing_code(self, service):
         suggestions = [
@@ -255,7 +259,10 @@ class TestSuggestionService:
             ),
         ]
 
-        valid = service._validate_against_diff(suggestions, "any patch")
+        patch = """--- a/main.py
++++ b/main.py
+any patch content"""
+        valid = service._validate_against_diff(suggestions, patch)
         assert len(valid) == 1  # Should be kept
 
     def test_process_suggestions_limits_count(self, service, sample_suggestions):

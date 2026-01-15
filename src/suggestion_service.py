@@ -1,6 +1,5 @@
 """Suggestion filtering and prioritization service."""
 
-import re
 from typing import List, Tuple
 
 from models import CodeSuggestion, SeverityLevel, SuggestionControl, ReviewOptions
@@ -60,15 +59,32 @@ class SuggestionService:
         return [s for s in suggestions if category_map.get(s.label.lower(), True)]
 
     def _validate_against_diff(self, suggestions: List[CodeSuggestion], patch: str) -> List[CodeSuggestion]:
-        """Keep only suggestions whose existing_code is in the diff."""
-        normalized_patch = re.sub(r'\s+', ' ', patch).lower()
+        """Keep only suggestions whose file is in the diff (relaxed validation)."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Extract files from diff
+        diff_files = set()
+        for line in patch.split('\n'):
+            if line.startswith('+++ b/') or line.startswith('--- a/'):
+                file_path = line.split('/', 1)[-1] if '/' in line else line[6:]
+                diff_files.add(file_path.strip())
+        
+        logger.debug(f"Files in diff: {diff_files}")
 
         valid = []
         for s in suggestions:
-            if not s.existing_code:
+            # Relaxed validation: just check if file is in diff
+            if not s.relevant_file:
+                logger.debug(f"Suggestion has no file, keeping: {s.one_sentence_summary[:50]}")
                 valid.append(s)
-            elif re.sub(r'\s+', ' ', s.existing_code).lower() in normalized_patch:
+            elif s.relevant_file in diff_files or any(s.relevant_file.endswith(f) or f.endswith(s.relevant_file) for f in diff_files):
+                logger.debug(f"File {s.relevant_file} found in diff, keeping")
                 valid.append(s)
+            else:
+                logger.warning(f"File {s.relevant_file} NOT in diff files {diff_files}, discarding")
+        
+        logger.info(f"Diff validation: {len(suggestions)} -> {len(valid)} suggestions")
         return valid
 
     def _remove_duplicates(self, suggestions: List[CodeSuggestion]) -> List[CodeSuggestion]:

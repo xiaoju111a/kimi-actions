@@ -101,6 +101,8 @@ Please output review results in YAML format."""
         filtered, discarded = suggestion_service.process_suggestions(
             suggestions, review_options, compressed_diff
         )
+        
+        logger.info(f"Suggestions: {len(suggestions)} parsed, {len(filtered)} filtered, {len(discarded)} discarded")
 
         # Calculate total files reviewed
         total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
@@ -108,6 +110,7 @@ Please output review results in YAML format."""
         # Post inline comments with summary as review body
         posted_count = 0
         if inline and filtered:
+            logger.info(f"Attempting to post {len(filtered)} inline comments")
             # Format summary first (with expected count)
             summary = self._format_inline_summary(
                 response, filtered, len(filtered),
@@ -117,6 +120,9 @@ Please output review results in YAML format."""
             posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
             if posted_count > 0:
                 return ""  # Already posted with summary, return empty to avoid duplicate
+            logger.warning("Inline comments failed, falling back to regular comment")
+        else:
+            logger.info(f"Skipping inline comments: inline={inline}, filtered={len(filtered)}")
         
         # Fallback: format summary with actual posted count (0 if failed or no suggestions)
         summary = self._format_inline_summary(
