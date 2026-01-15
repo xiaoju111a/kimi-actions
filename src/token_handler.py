@@ -101,6 +101,9 @@ class TokenHandler:
     SYSTEM_PROMPT_RESERVE = 2000
     RESPONSE_RESERVE = 8192
     SAFETY_MARGIN = 0.9  # Use 90% of available context
+    
+    # Cache for token estimates
+    _token_cache = {}
 
     def __init__(self, model: str = "kimi-k2-turbo-preview"):
         """Initialize token handler.
@@ -133,6 +136,11 @@ class TokenHandler:
         """
         if not text:
             return TokenStats(0, 0, 0, 0, 0)
+        
+        # Check cache first
+        cache_key = hash(text)
+        if cache_key in self._token_cache:
+            return self._token_cache[cache_key]
 
         # Count Chinese characters (CJK Unified Ideographs)
         chinese_pattern = r'[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]'
@@ -153,13 +161,18 @@ class TokenHandler:
 
         total_tokens = chinese_tokens + code_tokens + english_tokens
 
-        return TokenStats(
+        result = TokenStats(
             total_tokens=total_tokens,
             chinese_tokens=chinese_tokens,
             english_tokens=english_tokens,
             code_tokens=code_tokens,
             total_chars=len(text)
         )
+        
+        # Cache the result
+        self._token_cache[cache_key] = result
+
+        return result
 
     def count_tokens(self, text: str) -> int:
         """Simple token count (convenience method)."""
@@ -186,6 +199,10 @@ class TokenHandler:
                 if tokens_needed <= available * self.SAFETY_MARGIN:
                     return model_name
         return None
+    
+    def clear_cache(self):
+        """Clear the token estimation cache."""
+        self._token_cache.clear()
 
 
 class DiffChunker:
