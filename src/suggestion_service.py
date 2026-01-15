@@ -63,12 +63,17 @@ class SuggestionService:
         import logging
         logger = logging.getLogger(__name__)
         
-        # Extract files from diff
+        # Extract files from diff - support multiple formats
         diff_files = set()
         for line in patch.split('\n'):
+            # Standard git diff format
             if line.startswith('+++ b/') or line.startswith('--- a/'):
                 file_path = line.split('/', 1)[-1] if '/' in line else line[6:]
                 diff_files.add(file_path.strip())
+            # Custom format: ## File: path/to/file.py
+            elif line.startswith('## File: '):
+                file_path = line[9:].split(' (')[0].split(' [')[0].strip()
+                diff_files.add(file_path)
         
         logger.debug(f"Files in diff: {diff_files}")
 

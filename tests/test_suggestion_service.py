@@ -265,6 +265,31 @@ any patch content"""
         valid = service._validate_against_diff(suggestions, patch)
         assert len(valid) == 1  # Should be kept
 
+    def test_validate_against_diff_custom_format(self, service):
+        """Test validation with custom ## File: format used by DiffChunker."""
+        suggestions = [
+            CodeSuggestion(
+                id="1",
+                relevant_file="src/utils/data_processor.py",
+                language="python",
+                relevant_lines_start=10,
+                relevant_lines_end=15,
+                suggestion_content="Fix thread safety",
+                existing_code="",
+                improved_code="",
+                one_sentence_summary="Thread safety issue",
+                label="bug",
+                severity=SeverityLevel.HIGH
+            ),
+        ]
+
+        patch = """## File: src/utils/data_processor.py (python) [added]
++class DataProcessor:
++    def process(self):
++        pass"""
+        valid = service._validate_against_diff(suggestions, patch)
+        assert len(valid) == 1
+
     def test_process_suggestions_limits_count(self, service, sample_suggestions):
         service.control = SuggestionControl(max_suggestions=1)
         options = ReviewOptions()
