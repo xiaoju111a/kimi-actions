@@ -177,17 +177,29 @@ Be conservative with labels. Only suggest labels you're confident about."""
             # Keywords found
             keywords = data.get("keywords", [])
             if keywords:
-                parts.append(f"**Keywords extracted**: {', '.join(keywords[:5])}")
+                parts.append(f"**Keywords extracted**: {', '.join(keywords[:8])}")
 
-            # Related files
-            files = data.get("files", {})
-            if files:
+            # Ranked files (new format - aggregated and scored)
+            ranked_files = data.get("ranked_files", [])
+            if ranked_files:
                 file_list = []
-                for kw, matches in list(files.items())[:3]:
-                    for m in matches[:2]:
-                        file_list.append(f"- `{m['file']}` (matches: {kw})")
-                if file_list:
-                    parts.append("**Related files**:\n" + "\n".join(file_list[:5]))
+                for f in ranked_files[:8]:
+                    keywords_str = ', '.join(f.get('keywords', [])[:3])
+                    file_list.append(f"- `{f['file']}` (matches: {keywords_str})")
+                parts.append("**Related files (ranked by relevance)**:\n" + "\n".join(file_list))
+            else:
+                # Fallback to old format
+                files = data.get("files", {})
+                if files:
+                    file_list = []
+                    seen = set()
+                    for kw, matches in list(files.items())[:5]:
+                        for m in matches[:3]:
+                            if m['file'] not in seen:
+                                file_list.append(f"- `{m['file']}` (keyword: {kw})")
+                                seen.add(m['file'])
+                    if file_list:
+                        parts.append("**Related files**:\n" + "\n".join(file_list[:8]))
 
             # Code snippets
             snippets = data.get("snippets", [])
@@ -356,12 +368,18 @@ Rules:
         if reason:
             lines.append(f"### Analysis\n{reason}\n")
 
-        # Related files (from codebase scan)
+        # Related files (from codebase scan) - collapsible section
         related_files = result.get("related_files", [])
         if related_files:
-            lines.append("### Related Files\n")
-            for f in related_files[:5]:
+            lines.append("<details>")
+            lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>")
+            lines.append("")
+            lines.append("Files that may be relevant to this issue:")
+            lines.append("")
+            for f in related_files[:8]:  # Show up to 8 files
                 lines.append(f"- `{f}`")
+            lines.append("")
+            lines.append("</details>")
             lines.append("")
 
         # Recommendations based on type
