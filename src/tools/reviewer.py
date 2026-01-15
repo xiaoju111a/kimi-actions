@@ -115,6 +115,7 @@ Please output review results in YAML format."""
             summary = self._format_inline_summary(
                 response, filtered, len(filtered),
                 total_files=total_files,
+                included_chunks=included_chunks,
                 incremental=incremental, current_sha=pr.head.sha
             )
             posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
@@ -128,6 +129,7 @@ Please output review results in YAML format."""
         summary = self._format_inline_summary(
             response, filtered, posted_count,
             total_files=total_files,
+            included_chunks=included_chunks,
             incremental=incremental, current_sha=pr.head.sha
         )
         
@@ -234,6 +236,7 @@ Please output review results in YAML format."""
         suggestions: List[CodeSuggestion],
         inline_count: int,
         total_files: int = 0,
+        included_chunks: List[DiffChunk] = None,
         incremental: bool = False,
         current_sha: str = None
     ) -> str:
@@ -246,8 +249,16 @@ Please output review results in YAML format."""
                 yaml_content = response.split("```")[1].split("```")[0]
             data = yaml.safe_load(yaml_content)
             summary = data.get("summary", "").strip()
+            # Get file descriptions from AI response if available
+            file_descriptions = {}
+            for s in data.get("suggestions", []):
+                f = s.get("relevant_file", "")
+                desc = s.get("one_sentence_summary", "")
+                if f and desc and f not in file_descriptions:
+                    file_descriptions[f] = desc
         except Exception:
             summary = ""
+            file_descriptions = {}
 
         lines = []
 
@@ -258,42 +269,32 @@ Please output review results in YAML format."""
         else:
             lines.append("Code review completed.\n")
 
-        # Key Changes - list files with issues
-        if suggestions:
-            files_changed = list(set(s.relevant_file for s in suggestions if s.relevant_file))
-            if files_changed:
-                lines.append("**Key Changes:**")
-                for f in files_changed[:5]:
-                    lines.append(f"- `{f}`")
-                if len(files_changed) > 5:
-                    lines.append(f"- ... and {len(files_changed) - 5} more files")
-                lines.append("")
-
         # Reviewed changes - Copilot style
-        files_reviewed = total_files if total_files > 0 else len(set(s.relevant_file for s in suggestions if s.relevant_file))
+        files_reviewed = total_files if total_files > 0 else len(included_chunks) if included_chunks else 0
         lines.append("**Reviewed changes**")
         lines.append(f"Kimi reviewed {files_reviewed} changed files in this pull request and generated {inline_count} comments.\n")
 
-        # Show a summary per file (collapsible)
-        if suggestions:
-            file_summaries = {}
-            for s in suggestions:
-                if s.relevant_file:
-                    if s.relevant_file not in file_summaries:
-                        file_summaries[s.relevant_file] = []
-                    summary_text = (s.one_sentence_summary or "").replace("\n", " ").strip()
-                    file_summaries[s.relevant_file].append(summary_text)
-            
-            if file_summaries:
-                lines.append("<details>")
-                lines.append("<summary>Show a summary per file</summary>\n")
-                lines.append("| File | Description |")
-                lines.append("|------|-------------|")
-                for file_path, summaries in file_summaries.items():
-                    # Combine summaries for the same file
-                    desc = summaries[0] if summaries else "Code changes"
-                    lines.append(f"| `{file_path}` | {desc} |")
-                lines.append("\n</details>\n")
+        # Show a summary per file (collapsible) - always show if we have chunks
+        if included_chunks:
+            lines.append("<details>")
+            lines.append("<summary>Show a summary per file</summary>\n")
+            lines.append("| File | Description |")
+            lines.append("|------|-------------|")
+            for chunk in included_chunks:
+                # Generate description based on change type
+                change_desc = {
+                    "added": "New file",
+                    "deleted": "File removed", 
+                    "modified": "Code changes",
+                    "renamed": "File renamed"
+                }.get(chunk.change_type, "Code changes")
+                
+                # Use AI description if available, otherwise use change type
+                desc = file_descriptions.get(chunk.filename, change_desc)
+                if chunk.language:
+                    desc = f"{desc} ({chunk.language})"
+                lines.append(f"| `{chunk.filename}` | {desc} |")
+            lines.append("\n</details>\n")
 
         # Issues found - brief list
         if suggestions:
