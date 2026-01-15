@@ -276,6 +276,11 @@ Please output review results in YAML format."""
             if result:
                 output_parts.append(f"## Security Scan Output\n```text\n{result}\n```")
 
+        if "context_gatherer" in skill.scripts:
+            result = skill.run_script("context_gatherer", diff=diff, repo=".")
+            if result and result.strip() != "No additional context found.":
+                output_parts.append(f"## Related Context\n{result}")
+
         return "\n\n".join(output_parts)
 
     def _build_system_prompt(self, skill, script_output: str, diff: str) -> str:

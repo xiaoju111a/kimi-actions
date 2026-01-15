@@ -33,3 +33,7 @@ Thumbs.db
 # Local only - not synced to GitHub
 TODO.md
 scripts/test_local.py
+
+# Evaluation scripts and results
+scripts/eval_*.py
+scripts/eval_*.json
