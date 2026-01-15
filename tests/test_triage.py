@@ -138,7 +138,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 123, apply_labels=True)
@@ -173,7 +174,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 124, apply_labels=True)
@@ -206,7 +208,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 125, apply_labels=True)
@@ -225,7 +228,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 123, apply_labels=False)
@@ -258,7 +262,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 126, apply_labels=True)
@@ -287,7 +292,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 127, apply_labels=True)
@@ -321,7 +327,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 128, apply_labels=True)
@@ -344,7 +351,8 @@ class TestTriageIntegration:
         triage.repo_config = None
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue"
+            instructions="Triage the issue",
+            scripts={}
         ))
 
         result = triage.run("owner/repo", 129, apply_labels=True)

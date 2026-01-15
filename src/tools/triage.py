@@ -85,12 +85,27 @@ class Triage(BaseTool):
         if not repo_labels:
             repo_labels = ISSUE_TYPE_LABELS + PRIORITY_LABELS
 
-        # Load skill
+        # Load skill and context
+        self.load_context(repo_name)
         skill = self.get_skill()
         system_prompt = skill.instructions if skill else self._default_prompt()
 
+        # Run codebase scan if script available
+        code_context = ""
+        if skill and "scan_codebase" in skill.scripts:
+            scan_result = skill.run_script(
+                "scan_codebase",
+                title=issue.title,
+                body=issue.body or "",
+                repo_path=".",
+                max_files=5,
+                max_snippets=3
+            )
+            if scan_result:
+                code_context = self._format_scan_result(scan_result)
+
         # Build user prompt
-        user_prompt = self._build_prompt(issue, repo_labels)
+        user_prompt = self._build_prompt(issue, repo_labels, code_context)
 
         # Call Kimi
         response = self.call_kimi(system_prompt, user_prompt)
@@ -147,7 +162,49 @@ Your job is to:
 
 Be conservative with labels. Only suggest labels you're confident about."""
 
-    def _build_prompt(self, issue, repo_labels: List[str]) -> str:
+    def _format_scan_result(self, scan_result: str) -> str:
+        """Format codebase scan result for prompt."""
+        try:
+            data = json.loads(scan_result)
+
+            parts = []
+
+            # Summary
+            summary = data.get("summary", "")
+            if summary:
+                parts.append(f"**Scan Summary**: {summary}")
+
+            # Keywords found
+            keywords = data.get("keywords", [])
+            if keywords:
+                parts.append(f"**Keywords extracted**: {', '.join(keywords[:5])}")
+
+            # Related files
+            files = data.get("files", {})
+            if files:
+                file_list = []
+                for kw, matches in list(files.items())[:3]:
+                    for m in matches[:2]:
+                        file_list.append(f"- `{m['file']}` (matches: {kw})")
+                if file_list:
+                    parts.append("**Related files**:\n" + "\n".join(file_list[:5]))
+
+            # Code snippets
+            snippets = data.get("snippets", [])
+            if snippets:
+                snippet_parts = []
+                for s in snippets[:2]:
+                    snippet_parts.append(f"**{s['file']}** (keyword: `{s['keyword']}`):\n```\n{s['code']}\n```")
+                if snippet_parts:
+                    parts.append("**Code snippets**:\n" + "\n\n".join(snippet_parts))
+
+            return "\n\n".join(parts) if parts else ""
+
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"Failed to parse scan result: {e}")
+            return ""
+
+    def _build_prompt(self, issue, repo_labels: List[str], code_context: str = "") -> str:
         """Build the user prompt with issue details."""
         # Get issue body, truncate if too long
         body = issue.body or "(No description provided)"
@@ -170,6 +227,11 @@ Be conservative with labels. Only suggest labels you're confident about."""
             except Exception:
                 pass
 
+        # Add code context section if available
+        code_section = ""
+        if code_context:
+            code_section = f"\n## Codebase Analysis\n{code_context}\n"
+
         return f"""## Issue Information
 **Title**: {issue.title}
 **Author**: @{issue.user.login}
@@ -181,7 +243,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
 ## Issue Body
 {body}
 {comments_info}
-
+{code_section}
 ## Available Labels in Repository
 {', '.join(repo_labels)}
 
@@ -195,7 +257,8 @@ Analyze this issue and return a JSON response with your classification:
     "labels": ["label1", "label2"],
     "confidence": "high|medium|low",
     "summary": "Brief one-line summary of the issue",
-    "reason": "Brief explanation of your classification"
+    "reason": "Brief explanation of your classification",
+    "related_files": ["file1.py", "file2.js"]
 }}
 ```
 
@@ -203,7 +266,8 @@ Rules:
 - Only use labels from the available list
 - Maximum 4 labels total (including type and priority if they exist as labels)
 - Be conservative - only add labels you're confident about
-- If the issue is unclear or needs more info, note that in the reason"""
+- If the issue is unclear or needs more info, note that in the reason
+- Include related_files if codebase analysis found relevant files"""
 
     def _parse_response(self, response: str, valid_labels: List[str]) -> Optional[Dict]:
         """Parse JSON response and validate labels."""
@@ -238,7 +302,7 @@ Rules:
 
     def _format_result(self, result: Dict, applied: bool) -> str:
         """Format the triage result message."""
-        lines = ["## 🏷️ Kimi Issue Triage\n"]
+        lines = ["## 🌗 Kimi Issue Triage\n"]
 
         # Type and Priority
         issue_type = result.get("type", "unknown")
@@ -291,6 +355,14 @@ Rules:
         reason = result.get("reason", "")
         if reason:
             lines.append(f"### Analysis\n{reason}\n")
+
+        # Related files (from codebase scan)
+        related_files = result.get("related_files", [])
+        if related_files:
+            lines.append("### Related Files\n")
+            for f in related_files[:5]:
+                lines.append(f"- `{f}`")
+            lines.append("")
 
         # Recommendations based on type
         lines.append(self._get_recommendations(issue_type, priority))

@@ -62,6 +62,23 @@ Automatically classify and triage GitHub issues to help maintainers quickly proc
 4. **Look at linked issues/PRs** - May provide additional context
 5. **Assess impact scope** - How many users are affected?
 
+## Codebase Analysis
+
+This skill includes a `scan_codebase` script that automatically:
+1. Extracts keywords from issue title and body
+2. Searches the codebase for relevant files
+3. Returns code snippets for context
+
+### How It Works
+- Identifies function names, file paths, and technical terms in the issue
+- Searches source files (`.py`, `.js`, `.ts`, `.go`, etc.) for matches
+- Provides relevant code context to improve classification accuracy
+
+### Benefits
+- Confirms if mentioned features/files exist in codebase
+- Helps identify which components are affected
+- Increases confidence in classification
+
 ## Output Format
 
 ```json
@@ -71,7 +88,8 @@ Automatically classify and triage GitHub issues to help maintainers quickly proc
     "labels": ["label1", "label2", "label3"],
     "confidence": "high|medium|low",
     "summary": "One-line summary of the issue",
-    "reason": "Brief explanation of classification reasoning"
+    "reason": "Brief explanation of classification reasoning",
+    "related_files": ["src/auth.py", "src/login.js"]
 }
 ```
 
