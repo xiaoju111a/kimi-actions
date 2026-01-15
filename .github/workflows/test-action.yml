@@ -1,6 +1,8 @@
 name: Test Kimi Action
 
 on:
+  issues:
+    types: [opened, reopened]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -9,13 +11,14 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: read
+  issues: write
 
 jobs:
-  test:
+  # Job for PR-related commands (/review, /describe, /improve, /ask, /labels)
+  pr-commands:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'issue_comment' && 
+      (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '/')) ||
       (github.event_name == 'pull_request_review_comment' &&
@@ -38,10 +41,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      
+
       - name: Run Kimi Action
         uses: ./
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           auto_review: 'false'
+
+  # Job for Issue-related commands (/triage)
+  issue-commands:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' ||
+      (github.event_name == 'issue_comment' &&
+       !github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Run Kimi Action
+        uses: ./
+        with:
+          kimi_api_key: ${{ secrets.KIMI_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          auto_triage: 'false'
