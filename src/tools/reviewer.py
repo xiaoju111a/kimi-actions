@@ -167,6 +167,7 @@ Please output review results in YAML format."""
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
+        footer = f"\n\n---\n*Powered by Kimi | Model: {self.kimi.model}*"
 
         for s in suggestions:
             if not s.relevant_file or not s.relevant_lines_start:
@@ -178,6 +179,9 @@ Please output review results in YAML format."""
             # Use GitHub's native suggestion syntax for code changes
             if s.improved_code:
                 body += f"\n\n```suggestion\n{s.improved_code.strip()}\n```"
+            
+            # Add footer to each inline comment
+            body += footer
 
             comment = {
                 "path": s.relevant_file,
