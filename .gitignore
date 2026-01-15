@@ -38,3 +38,4 @@ scripts/test_local.py
 scripts/eval_*.py
 scripts/eval_*.json
 scripts/eval_*.log
+test
