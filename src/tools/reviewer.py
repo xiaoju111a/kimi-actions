@@ -83,7 +83,7 @@ Please output review results in YAML format."""
             response = self.call_kimi(system_prompt, user_prompt)
         except KimiAPIError as e:
             logger.error(f"Kimi API error: {e}")
-            return f"## 🌗 Kimi Code Review\n\n❌ {str(e)}\n\n{self.format_footer()}"
+            return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
 
         # Parse and filter suggestions
         suggestions = self._parse_suggestions(response)
@@ -102,34 +102,25 @@ Please output review results in YAML format."""
             suggestions, review_options, compressed_diff
         )
 
-        # Post inline comments if requested and we have suggestions
-        if inline and filtered:
-            # Calculate total files reviewed
-            total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
-            
-            # Format summary for review body
-            summary_comment = self._format_inline_summary(
-                response, filtered, len(filtered),
-                total_files=total_files,
-                incremental=incremental, current_sha=pr.head.sha
-            )
-            
-            # Post review with body (summary) + inline comments together
-            inline_count = self._post_inline_comments(
-                repo_name, pr_number, filtered, summary_body=summary_comment
-            )
-            if inline_count > 0:
-                return ""  # Already posted, return empty to avoid duplicate
-            
-            # Fallback: return summary for main.py to post
-            return summary_comment
+        # Calculate total files reviewed
+        total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
 
-        # Format and return full result (with included_chunks for file count)
-        result = self._format_review(
-            response, filtered, discarded, excluded_chunks,
-            included_chunks=included_chunks,
+        # Post inline comments if requested and we have suggestions
+        inline_count = 0
+        if inline and filtered:
+            inline_count = self._post_inline_comments(repo_name, pr_number, filtered)
+
+        # Always use the same format (Copilot style)
+        result = self._format_inline_summary(
+            response, filtered, inline_count,
+            total_files=total_files,
             incremental=incremental, current_sha=pr.head.sha
         )
+        
+        # If inline comments were posted successfully, the summary is already in the review body
+        if inline_count > 0:
+            return ""  # Already posted, return empty to avoid duplicate
+        
         return result
 
     def _get_incremental_diff(
@@ -166,8 +157,7 @@ Please output review results in YAML format."""
         return compressed, included, excluded, last_sha
 
     def _post_inline_comments(
-        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion],
-        summary_body: str = ""
+        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion]
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
@@ -204,10 +194,10 @@ Please output review results in YAML format."""
             try:
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments,
-                    body=summary_body,  # Summary as review body
+                    body="",  # Summary posted separately
                     event="COMMENT"
                 )
-                logger.info(f"Posted {len(comments)} inline comments with summary")
+                logger.info(f"Posted {len(comments)} inline comments")
                 return len(comments)
             except Exception as e:
                 logger.error(f"Failed to post inline comments: {e}")
