@@ -4,7 +4,7 @@
 
 # Kimi Code Review Action
 
-🤖 AI-powered code review using [Kimi](https://kimi.moonshot.cn/) (Moonshot AI)
+🌗 AI-powered code review using [Kimi](https://kimi.moonshot.cn/) (Moonshot AI)
 
 ## Architecture
 
