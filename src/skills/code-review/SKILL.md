@@ -59,6 +59,27 @@ When writing comments:
 
 ## Output Format
 
+First, provide a PR Overview section summarizing the changes:
+
+```markdown
+## Pull Request Overview
+
+This PR [brief description of what the PR does].
+
+### Key Changes:
+- [Change 1 description]
+- [Change 2 description]
+- [Change 3 description]
+
+### Reviewed Files:
+| File | Description |
+|------|-------------|
+| path/to/file1.py | Brief description of changes |
+| path/to/file2.py | Brief description of changes |
+```
+
+Then provide the review results in YAML format:
+
 ```yaml
 summary: |
   One sentence summary of PR quality and key findings

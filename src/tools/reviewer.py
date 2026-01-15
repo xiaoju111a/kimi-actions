@@ -233,11 +233,38 @@ Please output review results in YAML format."""
         if incremental:
             lines.append("*📝 Incremental review (new commits only)*\n")
 
-        lines.append(f"✅ Posted **{inline_count}** inline comments on specific code lines.\n")
-
+        # Pull request overview
+        lines.append("### Pull Request Overview\n")
         if summary:
-            lines.append(f"**Summary**: {summary}\n")
+            lines.append(f"{summary}\n")
 
+        # Key Changes
+        if suggestions:
+            files_changed = list(set(s.relevant_file for s in suggestions if s.relevant_file))
+            if files_changed:
+                lines.append("**Key Changes:**")
+                for f in files_changed[:5]:
+                    lines.append(f"- `{f}`")
+                lines.append("")
+
+        # Reviewed files table
+        if suggestions:
+            lines.append("**Reviewed Files:**")
+            lines.append("| File | Description |")
+            lines.append("|------|-------------|")
+            file_issues = {}
+            for s in suggestions:
+                if s.relevant_file:
+                    if s.relevant_file not in file_issues:
+                        file_issues[s.relevant_file] = []
+                    file_issues[s.relevant_file].append(s.one_sentence_summary)
+            for f, issues in list(file_issues.items())[:5]:
+                desc = issues[0] if issues else "Code changes"
+                lines.append(f"| `{f}` | {desc} |")
+            lines.append("")
+
+        lines.append("---\n")
+        lines.append(f"✅ Posted **{inline_count}** inline comments on specific code lines.\n")
         lines.append(f"**Code Score**: {score}/100\n")
 
         # List issues briefly
