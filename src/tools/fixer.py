@@ -90,8 +90,8 @@ class Fixer(BaseTool):
         tool_actions = []  # Track tool calls for summary
         final_summary = ""  # Store the final summary
 
-        # Define the prompt - ask for explicit summary at the end
-        fix_prompt = f"""You are a code fixing agent. Analyze this GitHub issue and fix it.
+        # Define the prompt - focused and efficient
+        fix_prompt = f"""You are a code fixing agent. Fix this GitHub issue.
 
 ## Issue #{issue_number}: {issue_title}
 
@@ -99,22 +99,12 @@ class Fixer(BaseTool):
 
 ## Instructions
 
-1. First, search the codebase to understand the problem
-2. Read relevant files to locate the bug
-3. Make the necessary code changes to fix the issue
-4. Verify your changes are correct
+1. Search for the relevant file(s) mentioned in the issue
+2. Read the file and locate the problem
+3. Make the fix
+4. Done - do NOT verify or explore further
 
-Work in the current directory. Use the available tools to search, read, and modify files.
-
-## IMPORTANT: Final Summary Format
-
-After completing the fix, you MUST provide a summary in this exact format:
-
----SUMMARY---
-**Problem**: [Brief description of the issue]
-**Solution**: [What you changed to fix it]
-**Files Modified**: [List of files you modified]
----END SUMMARY---
+Be efficient. Make the fix quickly and stop.
 """
 
         try:
@@ -122,7 +112,7 @@ After completing the fix, you MUST provide a summary in this exact format:
                 work_dir=work_dir,
                 model="kimi-k2-turbo-preview",
                 yolo=True,  # Auto-approve tool calls
-                max_steps_per_turn=20,
+                max_steps_per_turn=30,  # Increased from 20
             ) as session:
                 async for msg in session.prompt(fix_prompt):
                     # Handle different message types
@@ -428,12 +418,10 @@ Closes #{issue_number}
                 if "kimi" not in c['user'].lower():  # Skip bot comments
                     comment_context += f"- **{c['user']}**: {c['body'][:200]}\n"
 
-        # Build the prompt
+        # Build the prompt - more focused for simple updates
         update_prompt = f"""You are a code fixing agent. Update this PR based on the feedback.
 
 ## PR #{pr_number}: {pr_title}
-
-{pr_body}
 
 {review_context}
 
@@ -445,21 +433,13 @@ Closes #{issue_number}
 
 ## Instructions
 
-1. Read the relevant files that need changes
-2. Understand the feedback and what changes are requested
-3. Make the necessary code changes
-4. Verify your changes are correct
+1. Read ONLY the files mentioned in the feedback or review comments
+2. Make the specific changes requested
+3. Do NOT explore the entire codebase - focus on the requested changes only
 
-Work in the current directory. Use the available tools to search, read, and modify files.
+Work in the current directory. Be efficient and make changes quickly.
 
-## IMPORTANT: Final Summary Format
-
-After completing the update, you MUST provide a summary in this exact format:
-
----SUMMARY---
-**Changes Made**: [What you changed based on feedback]
-**Files Modified**: [List of files you modified]
----END SUMMARY---
+After completing, provide a brief summary of what you changed.
 """
 
         try:
@@ -467,7 +447,7 @@ After completing the update, you MUST provide a summary in this exact format:
                 work_dir=work_dir,
                 model="kimi-k2-turbo-preview",
                 yolo=True,
-                max_steps_per_turn=20,
+                max_steps_per_turn=30,  # Increased from 20
             ) as session:
                 async for msg in session.prompt(update_prompt):
                     if isinstance(msg, TextPart):
