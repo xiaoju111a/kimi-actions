@@ -9,8 +9,8 @@ Features:
 
 import re
 import logging
-from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from dataclasses import dataclass, field
+from typing import List, Tuple, Optional, Dict, FrozenSet
 from enum import Enum
 
 from diff_processor import should_exclude, DEFAULT_EXCLUDE_PATTERNS
@@ -35,7 +35,7 @@ class ModelConfig:
 
 
 # Kimi model configurations
-KIMI_MODELS = {
+KIMI_MODELS: Dict[str, ModelConfig] = {
     "kimi-k2-0905-preview": ModelConfig(
         name="kimi-k2-0905-preview",
         max_context=256000,
@@ -54,7 +54,7 @@ KIMI_MODELS = {
 
 # No fallback needed - K2 models have 256K context
 # If diff is too large, use intelligent chunking instead
-FALLBACK_CHAIN = [
+FALLBACK_CHAIN: List[str] = [
     "kimi-k2-turbo-preview",
 ]
 
@@ -89,33 +89,56 @@ class DiffChunk:
         return len(self.content)
 
 
+@dataclass
+class TokenHandlerConfig:
+    """Configuration constants for token handling."""
+    # Token estimation ratios (characters per token)
+    chinese_chars_per_token: float = 1.5
+    english_chars_per_token: float = 4.0
+    code_chars_per_token: float = 3.5
+    
+    # Reserved tokens
+    system_prompt_reserve: int = 2000
+    response_reserve: int = 8192
+    
+    # Safety margin (use 90% of available context)
+    safety_margin: float = 0.9
+    
+    # Minimum useful chunk size in tokens
+    min_chunk_tokens: int = 500
+
+
+# Default token handler configuration
+DEFAULT_TOKEN_CONFIG = TokenHandlerConfig()
+
+
 class TokenHandler:
     """Handles token estimation and content chunking."""
 
-    # Token estimation constants
-    CHINESE_CHARS_PER_TOKEN = 1.5  # Chinese is ~1.5 chars per token
-    ENGLISH_CHARS_PER_TOKEN = 4.0  # English is ~4 chars per token
-    CODE_CHARS_PER_TOKEN = 3.5    # Code is ~3.5 chars per token
-
-    # Reserved tokens for system prompt and response
-    SYSTEM_PROMPT_RESERVE = 2000
-    RESPONSE_RESERVE = 8192
-    SAFETY_MARGIN = 0.9  # Use 90% of available context
-
-    def __init__(self, model: str = "kimi-k2-turbo-preview"):
+    def __init__(
+        self,
+        model: str = "kimi-k2-turbo-preview",
+        config: Optional[TokenHandlerConfig] = None
+    ) -> None:
         """Initialize token handler.
         
         Args:
             model: Primary model name
+            config: Token handler configuration (uses defaults if None)
         """
         self.model = model
         self.model_config = KIMI_MODELS.get(model, KIMI_MODELS["kimi-k2-turbo-preview"])
+        self.config = config or DEFAULT_TOKEN_CONFIG
 
     @property
     def max_diff_tokens(self) -> int:
         """Maximum tokens available for diff content."""
-        available = self.model_config.max_context - self.SYSTEM_PROMPT_RESERVE - self.RESPONSE_RESERVE
-        return int(available * self.SAFETY_MARGIN)
+        available = (
+            self.model_config.max_context
+            - self.config.system_prompt_reserve
+            - self.config.response_reserve
+        )
+        return int(available * self.config.safety_margin)
 
     def estimate_tokens(self, text: str) -> TokenStats:
         """Estimate token count for mixed Chinese/English/code content.
@@ -147,9 +170,9 @@ class TokenHandler:
         other_chars = len(text) - chinese_chars - code_chars
 
         # Calculate tokens for each type
-        chinese_tokens = int(chinese_chars / self.CHINESE_CHARS_PER_TOKEN)
-        code_tokens = int(code_chars / self.CODE_CHARS_PER_TOKEN)
-        english_tokens = int(other_chars / self.ENGLISH_CHARS_PER_TOKEN)
+        chinese_tokens = int(chinese_chars / self.config.chinese_chars_per_token)
+        code_tokens = int(code_chars / self.config.code_chars_per_token)
+        english_tokens = int(other_chars / self.config.english_chars_per_token)
 
         total_tokens = chinese_tokens + code_tokens + english_tokens
 
@@ -182,47 +205,47 @@ class TokenHandler:
         for model_name in FALLBACK_CHAIN:
             config = KIMI_MODELS.get(model_name)
             if config:
-                available = config.max_context - self.SYSTEM_PROMPT_RESERVE - self.RESPONSE_RESERVE
-                if tokens_needed <= available * self.SAFETY_MARGIN:
+                available = (
+                    config.max_context
+                    - self.config.system_prompt_reserve
+                    - self.config.response_reserve
+                )
+                if tokens_needed <= available * self.config.safety_margin:
                     return model_name
         return None
 
 
-class DiffChunker:
-    """Intelligent diff chunking with priority-based selection."""
-
+@dataclass
+class DiffChunkerConfig:
+    """Configuration for diff chunking."""
     # File priority weights
-    PRIORITY_WEIGHTS = {
+    priority_weights: Dict[str, float] = field(default_factory=lambda: {
         # High priority - core logic
         "src/": 1.5,
         "lib/": 1.4,
         "app/": 1.4,
         "core/": 1.5,
-
         # Medium priority
         "api/": 1.2,
         "services/": 1.2,
         "controllers/": 1.2,
         "models/": 1.2,
-
         # Lower priority
         "test": 0.7,
         "spec": 0.7,
         "__test__": 0.6,
         "__mock__": 0.5,
-
         # Config files
         "config": 0.8,
         ".config": 0.6,
-
         # Docs
         "docs/": 0.5,
         "README": 0.6,
         ".md": 0.5,
-    }
-
+    })
+    
     # Language detection patterns
-    LANGUAGE_PATTERNS = {
+    language_patterns: Dict[str, str] = field(default_factory=lambda: {
         ".py": "python",
         ".js": "javascript",
         ".ts": "typescript",
@@ -238,17 +261,42 @@ class DiffChunker:
         ".c": "c",
         ".swift": "swift",
         ".kt": "kotlin",
-    }
+    })
+    
+    # Security keywords for priority boost
+    security_keywords: FrozenSet[str] = field(default_factory=lambda: frozenset({
+        "auth", "password", "token", "secret", "key", "crypt", "security"
+    }))
+    
+    # Priority boost factors
+    additions_boost: float = 1.1
+    security_boost: float = 1.3
+    truncated_penalty: float = 0.8
 
-    def __init__(self, token_handler: TokenHandler, exclude_patterns: List[str] = None):
+
+# Default chunker configuration
+DEFAULT_CHUNKER_CONFIG = DiffChunkerConfig()
+
+
+class DiffChunker:
+    """Intelligent diff chunking with priority-based selection."""
+
+    def __init__(
+        self,
+        token_handler: TokenHandler,
+        exclude_patterns: Optional[List[str]] = None,
+        config: Optional[DiffChunkerConfig] = None
+    ) -> None:
         """Initialize chunker with token handler.
         
         Args:
             token_handler: TokenHandler instance
             exclude_patterns: File patterns to exclude (uses defaults if None)
+            config: Chunker configuration (uses defaults if None)
         """
         self.token_handler = token_handler
         self.exclude_patterns = exclude_patterns or DEFAULT_EXCLUDE_PATTERNS
+        self.config = config or DEFAULT_CHUNKER_CONFIG
 
     def _calculate_priority(self, filename: str, content: str) -> float:
         """Calculate priority score for a file.
@@ -259,7 +307,7 @@ class DiffChunker:
         filename_lower = filename.lower()
 
         # Apply path-based weights
-        for pattern, weight in self.PRIORITY_WEIGHTS.items():
+        for pattern, weight in self.config.priority_weights.items():
             if pattern in filename_lower:
                 priority *= weight
 
@@ -267,18 +315,18 @@ class DiffChunker:
         additions = content.count("\n+")
         deletions = content.count("\n-")
         if additions > deletions:
-            priority *= 1.1
+            priority *= self.config.additions_boost
 
         # Boost files with security-related changes
-        security_keywords = ["auth", "password", "token", "secret", "key", "crypt", "security"]
-        if any(kw in filename_lower or kw in content.lower() for kw in security_keywords):
-            priority *= 1.3
+        content_lower = content.lower()
+        if any(kw in filename_lower or kw in content_lower for kw in self.config.security_keywords):
+            priority *= self.config.security_boost
 
         return priority
 
     def _detect_language(self, filename: str) -> str:
         """Detect programming language from filename."""
-        for ext, lang in self.LANGUAGE_PATTERNS.items():
+        for ext, lang in self.config.language_patterns.items():
             if filename.endswith(ext):
                 return lang
         return ""
@@ -308,7 +356,7 @@ class DiffChunker:
         file_pattern = r'^diff --git a/(.+?) b/(.+?)$'
         parts = re.split(file_pattern, diff, flags=re.MULTILINE)
 
-        chunks = []
+        chunks: List[DiffChunk] = []
         i = 1
         while i < len(parts):
             if i + 2 < len(parts):
@@ -353,7 +401,7 @@ class DiffChunker:
         file_pattern = r'^--- (.+?)$'
         parts = re.split(file_pattern, diff, flags=re.MULTILINE)
 
-        chunks = []
+        chunks: List[DiffChunk] = []
         for i in range(1, len(parts), 2):
             if i + 1 < len(parts):
                 filename = parts[i].strip()
@@ -402,8 +450,8 @@ class DiffChunker:
 
         chunks = self.parse_diff(diff)
 
-        included = []
-        excluded = []
+        included: List[DiffChunk] = []
+        excluded: List[DiffChunk] = []
         current_tokens = 0
 
         for chunk in chunks:
@@ -419,7 +467,8 @@ class DiffChunker:
             else:
                 # Try to include truncated version
                 remaining_tokens = max_tokens - current_tokens
-                if remaining_tokens > 500:  # Minimum useful size
+                min_chunk_tokens = self.token_handler.config.min_chunk_tokens
+                if remaining_tokens > min_chunk_tokens:
                     truncated = self._truncate_chunk(chunk, remaining_tokens)
                     if truncated:
                         included.append(truncated)
@@ -439,7 +488,8 @@ class DiffChunker:
         chars_per_token = chunk.size / max(chunk.tokens, 1)
         max_chars = int(max_tokens * chars_per_token * 0.9)
 
-        if max_chars < 200:
+        min_chars = 200
+        if max_chars < min_chars:
             return None
 
         truncated_content = chunk.content[:max_chars] + "\n... [truncated]"
@@ -448,14 +498,14 @@ class DiffChunker:
             filename=chunk.filename,
             content=truncated_content,
             tokens=max_tokens,
-            priority=chunk.priority * 0.8,  # Reduce priority for truncated
+            priority=chunk.priority * self.config.truncated_penalty,
             language=chunk.language,
             change_type=chunk.change_type
         )
 
     def build_diff_string(self, chunks: List[DiffChunk]) -> str:
         """Build diff string from chunks."""
-        parts = []
+        parts: List[str] = []
         for chunk in chunks:
             header = f"## File: {chunk.filename}"
             if chunk.language:

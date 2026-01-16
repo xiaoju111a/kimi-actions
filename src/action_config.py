@@ -9,8 +9,9 @@ This configuration is set by the Action user in their workflow file:
 """
 
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 @dataclass
@@ -71,7 +72,7 @@ class ActionConfig:
 
     # Labels
     auto_labels: bool = True
-    label_mapping: dict = field(default_factory=lambda: {
+    label_mapping: Dict[str, str] = field(default_factory=lambda: {
         "bug_fix": "bug",
         "feature": "enhancement",
         "refactor": "refactor",
@@ -108,19 +109,35 @@ class ActionConfig:
         return config
 
 
-# Global config instance
-_config: Optional[ActionConfig] = None
+# Context variable for thread-safe configuration storage
+# This replaces the global _config variable for better isolation in tests and async contexts
+_config_var: ContextVar[Optional[ActionConfig]] = ContextVar("action_config", default=None)
 
 
 def get_action_config() -> ActionConfig:
-    """Get the global Action configuration instance."""
-    global _config
-    if _config is None:
-        _config = ActionConfig.from_env()
-    return _config
+    """Get the Action configuration instance.
+    
+    Uses context variables for thread-safe access.
+    Creates a new config from environment if not set.
+    """
+    config = _config_var.get()
+    if config is None:
+        config = ActionConfig.from_env()
+        _config_var.set(config)
+    return config
 
 
 def set_action_config(config: ActionConfig) -> None:
-    """Set the global Action configuration instance."""
-    global _config
-    _config = config
+    """Set the Action configuration instance.
+    
+    Useful for testing or programmatic configuration.
+    """
+    _config_var.set(config)
+
+
+def reset_action_config() -> None:
+    """Reset the configuration to None.
+    
+    Useful for testing to ensure clean state between tests.
+    """
+    _config_var.set(None)

@@ -12,12 +12,16 @@ import logging
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any
 
 logger = logging.getLogger(__name__)
 
 # Built-in skills directory
 SKILLS_DIR = Path(__file__).parent / "skills"
+
+# Script execution constants
+SCRIPT_TIMEOUT_SECONDS: int = 30
+SCRIPT_INTERPRETER: str = "python3"
 
 
 @dataclass
@@ -39,14 +43,23 @@ class Skill:
             return True
         return any(t.lower() in text_lower for t in self.triggers)
 
-    def run_script(self, script_name: str, **kwargs) -> Optional[str]:
-        """Run a script and return output."""
+    def run_script(self, script_name: str, **kwargs: Any) -> Optional[str]:
+        """Run a script and return output.
+        
+        Args:
+            script_name: Name of the script to run
+            **kwargs: Arguments to pass to the script
+            
+        Returns:
+            Script stdout on success, stderr on failure, None if script not found
+        """
         script_path = self.scripts.get(script_name)
         if not script_path or not script_path.exists():
+            logger.debug(f"Script not found: {script_name}")
             return None
 
         try:
-            cmd = ["python3", str(script_path)]
+            cmd = [SCRIPT_INTERPRETER, str(script_path)]
             for key, value in kwargs.items():
                 cmd.extend([f"--{key}", str(value)])
 
@@ -54,9 +67,25 @@ class Skill:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=SCRIPT_TIMEOUT_SECONDS,
+                check=False  # Don't raise on non-zero exit
             )
-            return result.stdout if result.returncode == 0 else result.stderr
+            
+            if result.returncode == 0:
+                return result.stdout
+            else:
+                logger.warning(
+                    f"Script {script_name} exited with code {result.returncode}: "
+                    f"{result.stderr[:200] if result.stderr else 'no error output'}"
+                )
+                return result.stderr
+                
+        except subprocess.TimeoutExpired:
+            logger.error(f"Script {script_name} timed out after {SCRIPT_TIMEOUT_SECONDS}s")
+            return None
+        except FileNotFoundError:
+            logger.error(f"Interpreter not found: {SCRIPT_INTERPRETER}")
+            return None
         except Exception as e:
             logger.warning(f"Script {script_name} failed: {e}")
             return None
@@ -66,10 +95,17 @@ class Skill:
         return self.references.get(ref_name, "")
 
 
-def parse_skill_md(content: str) -> tuple:
-    """Parse SKILL.md content into metadata and instructions."""
+def parse_skill_md(content: str) -> Tuple[Dict[str, Any], str]:
+    """Parse SKILL.md content into metadata and instructions.
+    
+    Args:
+        content: Raw SKILL.md file content
+        
+    Returns:
+        Tuple of (metadata dict, instructions string)
+    """
     # Extract YAML frontmatter
-    match = re.match(r'^---\s*\n(.*?)\n---\s*\n(.*)$', content, re.DOTALL)
+    match = re.match(r'^---\s*\n(.*?)\n---\s*\n(.*)', content, re.DOTALL)
 
     if not match:
         return {}, content
@@ -78,7 +114,8 @@ def parse_skill_md(content: str) -> tuple:
         metadata = yaml.safe_load(match.group(1)) or {}
         instructions = match.group(2).strip()
         return metadata, instructions
-    except yaml.YAMLError:
+    except yaml.YAMLError as e:
+        logger.warning(f"Failed to parse SKILL.md frontmatter: {e}")
         return {}, content
 
 
@@ -125,7 +162,7 @@ def load_skill_from_dir(skill_dir: Path) -> Optional[Skill]:
 
 def load_builtin_skills() -> Dict[str, Skill]:
     """Load all built-in skills."""
-    skills = {}
+    skills: Dict[str, Skill] = {}
 
     if not SKILLS_DIR.exists():
         logger.warning(f"Skills directory not found: {SKILLS_DIR}")
@@ -140,9 +177,13 @@ def load_builtin_skills() -> Dict[str, Skill]:
     return skills
 
 
-def load_custom_skills_from_repo(github_client, repo_name: str, ref: str = None) -> Dict[str, Skill]:
+def load_custom_skills_from_repo(
+    github_client: Any,
+    repo_name: str,
+    ref: Optional[str] = None
+) -> Dict[str, Skill]:
     """Load custom skills from repository's .kimi/skills/ directory."""
-    skills = {}
+    skills: Dict[str, Skill] = {}
 
     try:
         repo = github_client.client.get_repo(repo_name)
@@ -164,7 +205,11 @@ def load_custom_skills_from_repo(github_client, repo_name: str, ref: str = None)
     return skills
 
 
-def _load_skill_from_github(repo, skill_path: str, ref: str = None) -> Optional[Skill]:
+def _load_skill_from_github(
+    repo: Any,
+    skill_path: str,
+    ref: Optional[str] = None
+) -> Optional[Skill]:
     """Load a skill from GitHub repository."""
     try:
         skill_md_path = f"{skill_path}/SKILL.md"
@@ -209,16 +254,21 @@ class SkillManager:
     Custom skills with the same name as built-in skills will override them.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.builtin_skills: Dict[str, Skill] = {}
         self.custom_skills: Dict[str, Skill] = {}
         self._load_builtin()
 
-    def _load_builtin(self):
+    def _load_builtin(self) -> None:
         """Load built-in skills."""
         self.builtin_skills = load_builtin_skills()
 
-    def load_from_repo(self, github_client, repo_name: str, ref: str = None):
+    def load_from_repo(
+        self,
+        github_client: Any,
+        repo_name: str,
+        ref: Optional[str] = None
+    ) -> None:
         """Load custom skills from repository.
         
         Custom skills override built-in skills with the same name.
@@ -252,13 +302,13 @@ class SkillManager:
         """Get a built-in skill by name (ignoring custom overrides)."""
         return self.builtin_skills.get(name)
 
-    def list_skills(self) -> Dict[str, dict]:
+    def list_skills(self) -> Dict[str, Dict[str, Any]]:
         """List all available skills with their source.
         
         Returns:
             Dict mapping skill name to {skill, source, overridden}
         """
-        result = {}
+        result: Dict[str, Dict[str, Any]] = {}
 
         for name, skill in self.builtin_skills.items():
             result[name] = {
@@ -292,7 +342,7 @@ class SkillManager:
             if trigger_lower in [t.lower() for t in s.triggers]
         ]
 
-    def build_prompt(self, skill_name: str, **context) -> str:
+    def build_prompt(self, skill_name: str, **context: Any) -> str:
         """Build prompt from skill instructions."""
         skill = self.get_skill(skill_name)
         if not skill:

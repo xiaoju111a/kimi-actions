@@ -3,8 +3,12 @@
 import os
 import re
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set, Any
+
 from github import Github, GithubException
+from github.PullRequest import PullRequest
+from github.Issue import Issue
+from github.Commit import Commit
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +16,14 @@ logger = logging.getLogger(__name__)
 class GitHubClient:
     """Client for GitHub PR operations."""
 
-    def __init__(self, token: str = None):
+    def __init__(self, token: Optional[str] = None) -> None:
         self.token = token or os.environ.get("GITHUB_TOKEN")
         if not self.token:
             raise ValueError("GITHUB_TOKEN is required")
 
-        self.client = Github(self.token)
+        self.client: Github = Github(self.token)
 
-    def get_pr(self, repo_name: str, pr_number: int):
+    def get_pr(self, repo_name: str, pr_number: int) -> PullRequest:
         """Get pull request object."""
         try:
             repo = self.client.get_repo(repo_name)
@@ -33,19 +37,19 @@ class GitHubClient:
         pr = self.get_pr(repo_name, pr_number)
         files = pr.get_files()
 
-        diff_parts = []
+        diff_parts: List[str] = []
         for file in files:
             if file.patch:
                 diff_parts.append(f"--- {file.filename}\n{file.patch}")
 
         return "\n\n".join(diff_parts)
 
-    def get_pr_files(self, repo_name: str, pr_number: int) -> list:
+    def get_pr_files(self, repo_name: str, pr_number: int) -> List[str]:
         """Get list of changed files in PR."""
         pr = self.get_pr(repo_name, pr_number)
         return [f.filename for f in pr.get_files()]
 
-    def post_comment(self, repo_name: str, pr_number: int, body: str):
+    def post_comment(self, repo_name: str, pr_number: int, body: str) -> None:
         """Post a comment on the PR."""
         try:
             pr = self.get_pr(repo_name, pr_number)
@@ -55,7 +59,7 @@ class GitHubClient:
             logger.error(f"Failed to post comment to PR #{pr_number}: {e}")
             raise
 
-    def post_review(self, repo_name: str, pr_number: int, body: str, event: str = "COMMENT"):
+    def post_review(self, repo_name: str, pr_number: int, body: str, event: str = "COMMENT") -> None:
         """Post a review on the PR.
         
         Args:
@@ -69,7 +73,7 @@ class GitHubClient:
             logger.error(f"Failed to post review to PR #{pr_number}: {e}")
             raise
 
-    def add_reaction(self, repo_name: str, pr_number: int, comment_id: int, reaction: str = "eyes"):
+    def add_reaction(self, repo_name: str, pr_number: int, comment_id: int, reaction: str = "eyes") -> None:
         """Add reaction to a comment."""
         try:
             repo = self.client.get_repo(repo_name)
@@ -78,7 +82,7 @@ class GitHubClient:
         except GithubException as e:
             logger.warning(f"Failed to add reaction: {e}")
 
-    def reply_to_review_comment(self, repo_name: str, pr_number: int, comment_id: int, body: str):
+    def reply_to_review_comment(self, repo_name: str, pr_number: int, comment_id: int, body: str) -> None:
         """Reply to a review comment (inline comment)."""
         try:
             pr = self.get_pr(repo_name, pr_number)
@@ -94,10 +98,10 @@ class GitHubClient:
         self,
         repo_name: str,
         pr_number: int,
-        comments: List[Dict],
+        comments: List[Dict[str, Any]],
         body: str = "",
         event: str = "COMMENT"
-    ):
+    ) -> None:
         """Submit a review with inline comments on specific lines.
 
         Args:
@@ -112,18 +116,18 @@ class GitHubClient:
             commit = pr.get_commits().reversed[0]  # Latest commit
 
             # Filter valid comments (line must be in diff)
-            valid_comments = []
+            valid_comments: List[Dict[str, Any]] = []
             diff_lines = self._get_diff_line_map(repo_name, pr_number)
 
             for c in comments:
-                path = c.get("path", "")
-                line = c.get("line", 0)
-                side = c.get("side", "RIGHT")
-                start_line = c.get("start_line")
+                path: str = c.get("path", "")
+                line: int = c.get("line", 0)
+                side: str = c.get("side", "RIGHT")
+                start_line: Optional[int] = c.get("start_line")
 
                 # Validate line is in diff
                 if path in diff_lines and line in diff_lines[path]:
-                    comment_data = {
+                    comment_data: Dict[str, Any] = {
                         "path": path,
                         "line": line,
                         "body": c.get("body", ""),
@@ -154,18 +158,18 @@ class GitHubClient:
             logger.error(f"Failed to create review: {e}")
             raise
 
-    def _get_diff_line_map(self, repo_name: str, pr_number: int) -> Dict[str, set]:
+    def _get_diff_line_map(self, repo_name: str, pr_number: int) -> Dict[str, Set[int]]:
         """Get map of file -> set of valid line numbers in diff."""
         pr = self.get_pr(repo_name, pr_number)
         files = pr.get_files()
 
-        line_map = {}
+        line_map: Dict[str, Set[int]] = {}
         for file in files:
             if not file.patch:
                 continue
 
-            lines = set()
-            current_line = 0
+            lines: Set[int] = set()
+            current_line: int = 0
 
             for patch_line in file.patch.split('\n'):
                 # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
@@ -188,7 +192,7 @@ class GitHubClient:
 
     # === Labels ===
 
-    def add_labels(self, repo_name: str, pr_number: int, labels: List[str]):
+    def add_labels(self, repo_name: str, pr_number: int, labels: List[str]) -> None:
         """Add labels to a PR."""
         try:
             pr = self.get_pr(repo_name, pr_number)
@@ -198,7 +202,7 @@ class GitHubClient:
             logger.error(f"Failed to add labels: {e}")
             raise
 
-    def remove_labels(self, repo_name: str, pr_number: int, labels: List[str]):
+    def remove_labels(self, repo_name: str, pr_number: int, labels: List[str]) -> None:
         """Remove labels from a PR."""
         try:
             pr = self.get_pr(repo_name, pr_number)
@@ -222,12 +226,12 @@ class GitHubClient:
 
     # === Incremental Review ===
 
-    def get_commits_since(self, repo_name: str, pr_number: int, since_sha: str) -> List:
+    def get_commits_since(self, repo_name: str, pr_number: int, since_sha: str) -> List[Commit]:
         """Get commits after a specific SHA."""
         pr = self.get_pr(repo_name, pr_number)
         commits = list(pr.get_commits())
 
-        new_commits = []
+        new_commits: List[Commit] = []
         found = False
         for c in commits:
             if found:
@@ -240,7 +244,7 @@ class GitHubClient:
     def get_diff_for_commits(self, repo_name: str, commit_shas: List[str]) -> str:
         """Get combined diff for specific commits."""
         repo = self.client.get_repo(repo_name)
-        diff_parts = []
+        diff_parts: List[str] = []
 
         for sha in commit_shas:
             try:
@@ -253,7 +257,7 @@ class GitHubClient:
 
         return "\n\n".join(diff_parts)
 
-    def get_last_bot_comment(self, repo_name: str, pr_number: int, bot_marker: str = "<!-- kimi-review -->") -> Optional[Dict]:
+    def get_last_bot_comment(self, repo_name: str, pr_number: int, bot_marker: str = "<!-- kimi-review -->") -> Optional[Dict[str, Any]]:
         """Find the last comment from this bot with review marker.
 
         Returns dict with 'sha' and 'comment_id' if found.
@@ -275,7 +279,7 @@ class GitHubClient:
 
     # === Issue Operations ===
 
-    def get_issue(self, repo_name: str, issue_number: int):
+    def get_issue(self, repo_name: str, issue_number: int) -> Issue:
         """Get issue object."""
         try:
             repo = self.client.get_repo(repo_name)
@@ -284,7 +288,7 @@ class GitHubClient:
             logger.error(f"Failed to get Issue #{issue_number} from {repo_name}: {e}")
             raise
 
-    def post_issue_comment(self, repo_name: str, issue_number: int, body: str):
+    def post_issue_comment(self, repo_name: str, issue_number: int, body: str) -> None:
         """Post a comment on an issue."""
         try:
             issue = self.get_issue(repo_name, issue_number)
@@ -294,7 +298,7 @@ class GitHubClient:
             logger.error(f"Failed to post comment to Issue #{issue_number}: {e}")
             raise
 
-    def add_issue_reaction(self, repo_name: str, issue_number: int, comment_id: int, reaction: str = "eyes"):
+    def add_issue_reaction(self, repo_name: str, issue_number: int, comment_id: int, reaction: str = "eyes") -> None:
         """Add reaction to an issue comment."""
         try:
             repo = self.client.get_repo(repo_name)
@@ -303,7 +307,7 @@ class GitHubClient:
         except GithubException as e:
             logger.warning(f"Failed to add reaction to issue comment: {e}")
 
-    def add_issue_labels(self, repo_name: str, issue_number: int, labels: List[str]):
+    def add_issue_labels(self, repo_name: str, issue_number: int, labels: List[str]) -> None:
         """Add labels to an issue."""
         try:
             issue = self.get_issue(repo_name, issue_number)
