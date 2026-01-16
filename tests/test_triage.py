@@ -142,7 +142,20 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 123, apply_labels=True)
+        # Mock subprocess (git clone) and agent
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "bug",
+    "priority": "high",
+    "labels": ["bug", "priority: high"],
+    "confidence": "high",
+    "summary": "App crashes on login button click after v2.0 update",
+    "reason": "Clear bug report with reproduction steps"
+}"""
+
+            result = triage.run("owner/repo", 123, apply_labels=True)
 
         assert "Kimi Issue Triage" in result
         assert "bug" in result.lower()
@@ -154,15 +167,6 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         kimi = MockKimiClientForTriage()
-        kimi.set_response("""{
-    "type": "feature",
-    "priority": "medium",
-    "labels": ["feature", "enhancement"],
-    "confidence": "high",
-    "summary": "Request for dark mode support",
-    "reason": "User is requesting new functionality that does not exist"
-}""")
-
         github = MockGitHubClientForIssue()
         github._issue = MockIssue(
             title="Add dark mode support",
@@ -178,7 +182,19 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 124, apply_labels=True)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "feature",
+    "priority": "medium",
+    "labels": ["feature", "enhancement"],
+    "confidence": "high",
+    "summary": "Request for dark mode support",
+    "reason": "User is requesting new functionality that does not exist"
+}"""
+
+            result = triage.run("owner/repo", 124, apply_labels=True)
 
         assert "feature" in result.lower()
         assert "medium" in result.lower()
@@ -188,15 +204,6 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         kimi = MockKimiClientForTriage()
-        kimi.set_response("""{
-    "type": "question",
-    "priority": "low",
-    "labels": ["question", "help wanted"],
-    "confidence": "high",
-    "summary": "User asking how to configure OAuth",
-    "reason": "User is asking for help, not reporting a bug or requesting a feature"
-}""")
-
         github = MockGitHubClientForIssue()
         github._issue = MockIssue(
             title="How do I configure OAuth?",
@@ -212,7 +219,19 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 125, apply_labels=True)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "question",
+    "priority": "low",
+    "labels": ["question", "help wanted"],
+    "confidence": "high",
+    "summary": "User asking how to configure OAuth",
+    "reason": "User is asking for help, not reporting a bug or requesting a feature"
+}"""
+
+            result = triage.run("owner/repo", 125, apply_labels=True)
 
         assert "question" in result.lower()
 
@@ -232,7 +251,19 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 123, apply_labels=False)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "bug",
+    "priority": "high",
+    "labels": ["bug", "priority: high"],
+    "confidence": "high",
+    "summary": "Test summary",
+    "reason": "Test reason"
+}"""
+
+            result = triage.run("owner/repo", 123, apply_labels=False)
 
         assert "Kimi Issue Triage" in result
         assert len(github.applied_labels) == 0  # No labels applied
@@ -242,15 +273,6 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         kimi = MockKimiClientForTriage()
-        kimi.set_response("""{
-    "type": "other",
-    "priority": "low",
-    "labels": [],
-    "confidence": "low",
-    "summary": "Issue lacks details",
-    "reason": "No description provided, cannot determine issue type"
-}""")
-
         github = MockGitHubClientForIssue()
         github._issue = MockIssue(
             title="Something is wrong",
@@ -266,7 +288,19 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 126, apply_labels=True)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "other",
+    "priority": "low",
+    "labels": [],
+    "confidence": "low",
+    "summary": "Issue lacks details",
+    "reason": "No description provided, cannot determine issue type"
+}"""
+
+            result = triage.run("owner/repo", 126, apply_labels=True)
 
         # Should handle gracefully
         assert "Kimi Issue Triage" in result
@@ -276,15 +310,6 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         kimi = MockKimiClientForTriage()
-        kimi.set_response("""{
-    "type": "bug",
-    "priority": "high",
-    "labels": ["bug", "invalid-label-not-in-repo", "priority: high"],
-    "confidence": "high",
-    "summary": "Test issue",
-    "reason": "Test reason"
-}""")
-
         github = MockGitHubClientForIssue()
 
         triage = Triage(kimi, github)
@@ -296,7 +321,19 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 127, apply_labels=True)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "bug",
+    "priority": "high",
+    "labels": ["bug", "invalid-label-not-in-repo", "priority: high"],
+    "confidence": "high",
+    "summary": "Test issue",
+    "reason": "Test reason"
+}"""
+
+            result = triage.run("owner/repo", 127, apply_labels=True)
 
         # Should only apply valid labels
         assert "invalid-label-not-in-repo" not in github.applied_labels
@@ -307,15 +344,6 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         kimi = MockKimiClientForTriage()
-        kimi.set_response("""{
-    "type": "bug",
-    "priority": "critical",
-    "labels": ["bug", "priority: high"],
-    "confidence": "high",
-    "summary": "SQL injection vulnerability in login",
-    "reason": "Security vulnerability that could lead to data breach"
-}""")
-
         github = MockGitHubClientForIssue()
         github._issue = MockIssue(
             title="SQL injection in login form",
@@ -331,7 +359,19 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 128, apply_labels=True)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = """{
+    "type": "bug",
+    "priority": "critical",
+    "labels": ["bug", "priority: high"],
+    "confidence": "high",
+    "summary": "SQL injection vulnerability in login",
+    "reason": "Security vulnerability that could lead to data breach"
+}"""
+
+            result = triage.run("owner/repo", 128, apply_labels=True)
 
         assert "critical" in result.lower()
         # Should have recommendations for critical issues
@@ -342,8 +382,6 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         kimi = MockKimiClientForTriage()
-        kimi.set_response("This is not valid JSON")
-
         github = MockGitHubClientForIssue()
 
         triage = Triage(kimi, github)
@@ -355,7 +393,12 @@ class TestTriageIntegration:
             scripts={}
         ))
 
-        result = triage.run("owner/repo", 129, apply_labels=True)
+        with patch('tools.triage.subprocess') as mock_subprocess, \
+             patch('tools.triage.asyncio.run') as mock_asyncio:
+            mock_subprocess.run.return_value = Mock(returncode=0)
+            mock_asyncio.return_value = "This is not valid JSON"
+
+            result = triage.run("owner/repo", 129, apply_labels=True)
 
         # Should handle gracefully
         assert "Failed to analyze" in result or "Kimi Issue Triage" in result

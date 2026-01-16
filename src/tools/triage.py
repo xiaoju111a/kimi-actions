@@ -1,12 +1,16 @@
-"""Issue triage tool for Kimi Actions.
+"""Issue triage tool using Kimi Agent SDK.
 
 Automatically classify issues by type (bug, feature, question, docs, etc.)
 and suggest appropriate labels and priority.
 """
 
+import asyncio
 import json
 import logging
+import os
 import re
+import tempfile
+import subprocess
 from typing import List, Dict, Optional
 
 from tools.base import BaseTool
@@ -39,20 +43,9 @@ PRIORITY_LABELS = [
     "P3",
 ]
 
-# Area/component labels (common patterns)
-AREA_LABELS = [
-    "area: api",
-    "area: ui",
-    "area: docs",
-    "area: testing",
-    "area: build",
-    "area: security",
-    "area: performance",
-]
-
 
 class Triage(BaseTool):
-    """Auto-triage issues by classifying type and suggesting labels/priority."""
+    """Auto-triage issues using Agent SDK with codebase analysis."""
 
     @property
     def skill_name(self) -> str:
@@ -85,226 +78,186 @@ class Triage(BaseTool):
         if not repo_labels:
             repo_labels = ISSUE_TYPE_LABELS + PRIORITY_LABELS
 
-        # Load skill and context
-        self.load_context(repo_name)
+        # Load skill for prompt
         skill = self.get_skill()
-        system_prompt = skill.instructions if skill else self._default_prompt()
+        skill_instructions = skill.instructions if skill else self._default_instructions()
 
-        # Run codebase scan if script available
-        code_context = ""
-        if skill and "scan_codebase" in skill.scripts:
-            scan_result = skill.run_script(
-                "scan_codebase",
-                title=issue.title,
-                body=issue.body or "",
-                repo_path=".",
-                max_files=5,
-                max_snippets=3
-            )
-            if scan_result:
-                code_context = self._format_scan_result(scan_result)
+        logger.info(f"Triaging issue #{issue_number}: {issue.title}")
 
-        # Build user prompt
-        user_prompt = self._build_prompt(issue, repo_labels, code_context)
-
-        # Call Kimi
-        response = self.call_kimi(system_prompt, user_prompt)
-
-        # Parse response
-        triage_result = self._parse_response(response, repo_labels)
-
-        if not triage_result:
-            return "## 🏷️ Kimi Triage\n\n❌ Failed to analyze this issue."
-
-        # Apply labels if requested
-        applied = False
-        if apply_labels and triage_result.get("labels"):
+        # Clone repo and run agent
+        with tempfile.TemporaryDirectory() as work_dir:
             try:
-                self.github.add_issue_labels(repo_name, issue_number, triage_result["labels"])
-                applied = True
+                # Clone the repo
+                clone_url = f"https://github.com/{repo_name}.git"
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", clone_url, work_dir],
+                    check=True, capture_output=True
+                )
+
+                # Run agent triage
+                result = asyncio.run(self._run_agent_triage(
+                    work_dir=work_dir,
+                    issue_title=issue.title,
+                    issue_body=issue.body or "",
+                    issue_author=issue.user.login,
+                    repo_labels=repo_labels,
+                    skill_instructions=skill_instructions
+                ))
+
+                # Parse result
+                triage_result = self._parse_response(result, repo_labels)
+
+                if not triage_result:
+                    return f"## 🌗 Kimi Triage\n\n❌ Failed to analyze this issue.\n\n**Agent Response:**\n{result[:500]}"
+
+                # Apply labels if requested
+                applied = False
+                if apply_labels and triage_result.get("labels"):
+                    try:
+                        self.github.add_issue_labels(repo_name, issue_number, triage_result["labels"])
+                        applied = True
+                    except Exception as e:
+                        logger.error(f"Failed to apply labels: {e}")
+
+                return self._format_result(triage_result, applied)
+
             except Exception as e:
-                logger.error(f"Failed to apply labels: {e}")
+                logger.error(f"Triage failed: {e}")
+                return f"❌ Failed to triage issue: {str(e)}"
 
-        # Format result
-        return self._format_result(triage_result, applied)
-
-    def _default_prompt(self) -> str:
-        return """You are an expert issue triage assistant for open source projects.
-
-Your job is to:
-1. Classify the issue type (bug, feature, question, docs, etc.)
-2. Assess priority based on impact and urgency
-3. Suggest appropriate labels from the available list
-4. Provide a brief analysis
-
-## Classification Guidelines
-
-### Issue Types
-- **bug**: Something isn't working as expected, errors, crashes, incorrect behavior
-- **feature**: Request for new functionality that doesn't exist
-- **enhancement**: Improvement to existing functionality
-- **question**: User asking for help or clarification
-- **documentation**: Documentation improvements or corrections
-- **help wanted**: Issue needs community contribution
-- **good first issue**: Suitable for newcomers
-
-### Priority Assessment
-- **P0/Critical**: System down, security vulnerability, data loss
-- **P1/High**: Major feature broken, significant user impact
-- **P2/Medium**: Important but not urgent, workarounds exist
-- **P3/Low**: Minor issues, nice-to-have improvements
-
-### Signals to Look For
-- Bug: "error", "crash", "not working", "broken", "fails", stack traces
-- Feature: "would be nice", "add support", "implement", "new feature"
-- Question: "how to", "is it possible", "can I", "help", question marks
-- Docs: "documentation", "readme", "example", "typo in docs"
-
-Be conservative with labels. Only suggest labels you're confident about."""
-
-    def _format_scan_result(self, scan_result: str) -> str:
-        """Format codebase scan result for prompt."""
+    async def _run_agent_triage(
+        self,
+        work_dir: str,
+        issue_title: str,
+        issue_body: str,
+        issue_author: str,
+        repo_labels: List[str],
+        skill_instructions: str
+    ) -> str:
+        """Run agent to analyze the issue."""
         try:
-            data = json.loads(scan_result)
+            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+        except ImportError:
+            return '{"error": "kimi-agent-sdk not installed"}'
 
-            parts = []
+        # Ensure KIMI_API_KEY is set
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return '{"error": "KIMI_API_KEY is required"}'
 
-            # Summary
-            summary = data.get("summary", "")
-            if summary:
-                parts.append(f"**Scan Summary**: {summary}")
+        os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
+        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
-            # Keywords found
-            keywords = data.get("keywords", [])
-            if keywords:
-                parts.append(f"**Keywords extracted**: {', '.join(keywords[:8])}")
+        # Collect agent output
+        text_parts = []
 
-            # Ranked files (new format - aggregated and scored)
-            ranked_files = data.get("ranked_files", [])
-            if ranked_files:
-                file_list = []
-                for f in ranked_files[:8]:
-                    keywords_str = ', '.join(f.get('keywords', [])[:3])
-                    file_list.append(f"- `{f['file']}` (matches: {keywords_str})")
-                parts.append("**Related files (ranked by relevance)**:\n" + "\n".join(file_list))
-            else:
-                # Fallback to old format
-                files = data.get("files", {})
-                if files:
-                    file_list = []
-                    seen = set()
-                    for kw, matches in list(files.items())[:5]:
-                        for m in matches[:3]:
-                            if m['file'] not in seen:
-                                file_list.append(f"- `{m['file']}` (keyword: {kw})")
-                                seen.add(m['file'])
-                    if file_list:
-                        parts.append("**Related files**:\n" + "\n".join(file_list[:8]))
-
-            # Code snippets
-            snippets = data.get("snippets", [])
-            if snippets:
-                snippet_parts = []
-                for s in snippets[:2]:
-                    snippet_parts.append(f"**{s['file']}** (keyword: `{s['keyword']}`):\n```\n{s['code']}\n```")
-                if snippet_parts:
-                    parts.append("**Code snippets**:\n" + "\n\n".join(snippet_parts))
-
-            return "\n\n".join(parts) if parts else ""
-
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"Failed to parse scan result: {e}")
-            return ""
-
-    def _build_prompt(self, issue, repo_labels: List[str], code_context: str = "") -> str:
-        """Build the user prompt with issue details."""
-        # Get issue body, truncate if too long
-        body = issue.body or "(No description provided)"
-        if len(body) > 6000:
-            body = body[:6000] + "\n...(truncated)"
-
-        # Get existing labels
-        existing_labels = [label.name for label in issue.labels]
-
-        # Get comments count and first few comments if any
-        comments_info = ""
-        if issue.comments > 0:
-            try:
-                comments = list(issue.get_comments())[:3]
-                comments_text = "\n".join([
-                    f"- @{c.user.login}: {c.body[:200]}..." if len(c.body) > 200 else f"- @{c.user.login}: {c.body}"
-                    for c in comments
-                ])
-                comments_info = f"\n## Recent Comments ({issue.comments} total)\n{comments_text}"
-            except Exception:
-                pass
-
-        # Add code context section if available
-        code_section = ""
-        if code_context:
-            code_section = f"\n## Codebase Analysis\n{code_context}\n"
-
-        return f"""## Issue Information
-**Title**: {issue.title}
-**Author**: @{issue.user.login}
-**Created**: {issue.created_at}
-**State**: {issue.state}
-**Existing Labels**: {', '.join(existing_labels) if existing_labels else 'None'}
-**Comments**: {issue.comments}
-
-## Issue Body
-{body}
-{comments_info}
-{code_section}
-## Available Labels in Repository
-{', '.join(repo_labels)}
+        # Build prompt with skill instructions
+        triage_prompt = f"""{skill_instructions}
 
 ---
 
-Analyze this issue and return a JSON response with your classification:
+## Issue to Triage
+
+**Title**: {issue_title}
+**Author**: @{issue_author}
+
+**Body**:
+{issue_body[:4000]}
+
+## Available Labels
+{', '.join(repo_labels)}
+
+## Instructions
+
+1. Read the issue carefully
+2. If the issue mentions specific files, functions, or components, search the codebase to verify they exist
+3. Based on your analysis, classify the issue
+
+Return your analysis as JSON:
 ```json
 {{
     "type": "bug|feature|enhancement|question|documentation|other",
     "priority": "critical|high|medium|low",
     "labels": ["label1", "label2"],
     "confidence": "high|medium|low",
-    "summary": "Brief one-line summary of the issue",
-    "reason": "Brief explanation of your classification",
+    "summary": "One-line summary",
+    "reason": "Brief explanation",
     "related_files": ["file1.py", "file2.js"]
 }}
 ```
 
 Rules:
 - Only use labels from the available list
-- Maximum 4 labels total (including type and priority if they exist as labels)
+- Maximum 4 labels
 - Be conservative - only add labels you're confident about
-- If the issue is unclear or needs more info, note that in the reason
-- Include related_files if codebase analysis found relevant files"""
+- Search the codebase if the issue mentions specific code
+"""
+
+        try:
+            async with await Session.create(
+                work_dir=work_dir,
+                model="kimi-k2-turbo-preview",
+                yolo=True,
+                max_steps_per_turn=50,  # Triage shouldn't need many steps
+            ) as session:
+                async for msg in session.prompt(triage_prompt):
+                    if isinstance(msg, TextPart):
+                        text_parts.append(msg.text)
+                        logger.info(f"Agent: {msg.text[:100]}...")
+                    elif isinstance(msg, ApprovalRequest):
+                        msg.resolve("approve")
+
+            return " ".join(text_parts)
+
+        except Exception as e:
+            logger.error(f"Agent execution failed: {e}")
+            return f'{{"error": "{str(e)}"}}'
+
+    def _default_instructions(self) -> str:
+        """Default triage instructions if no skill loaded."""
+        return """You are an expert issue triage assistant.
+
+## Issue Type Classification
+- **bug**: Something isn't working - errors, crashes, incorrect behavior
+- **feature**: Request for new functionality
+- **enhancement**: Improvement to existing functionality
+- **question**: User asking for help or clarification
+- **documentation**: Documentation improvements
+
+## Priority Assessment
+- **critical**: System down, security vulnerability, data loss
+- **high**: Major feature broken, significant user impact
+- **medium**: Important but not urgent, workarounds exist
+- **low**: Minor issues, nice-to-have improvements
+
+Be conservative with labels. Only suggest labels you're confident about."""
 
     def _parse_response(self, response: str, valid_labels: List[str]) -> Optional[Dict]:
         """Parse JSON response and validate labels."""
         try:
             # Extract JSON from response
-            json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
             if not json_match:
-                # Try to find JSON with nested braces
+                json_match = re.search(r'\{[^{}]*"type"[^{}]*\}', response, re.DOTALL)
+            if not json_match:
                 json_match = re.search(r'\{.*\}', response, re.DOTALL)
 
             if json_match:
-                data = json.loads(json_match.group())
+                json_str = json_match.group(1) if '```' in response else json_match.group()
+                data = json.loads(json_str)
 
                 # Validate and filter labels
                 suggested_labels = data.get("labels", [])
                 valid = []
 
-                # Case-insensitive matching
                 valid_labels_lower = {v.lower(): v for v in valid_labels}
                 for label in suggested_labels:
                     label_lower = label.lower()
                     if label_lower in valid_labels_lower:
                         valid.append(valid_labels_lower[label_lower])
 
-                data["labels"] = valid[:4]  # Max 4 labels
+                data["labels"] = valid[:4]
                 return data
 
         except (json.JSONDecodeError, Exception) as e:
@@ -316,12 +269,10 @@ Rules:
         """Format the triage result message."""
         lines = ["## 🌗 Kimi Issue Triage\n"]
 
-        # Type and Priority
         issue_type = result.get("type", "unknown")
         priority = result.get("priority", "medium")
         confidence = result.get("confidence", "medium")
 
-        # Type emoji mapping
         type_emoji = {
             "bug": "🐛",
             "feature": "✨",
@@ -331,7 +282,6 @@ Rules:
             "other": "📋"
         }
 
-        # Priority emoji mapping
         priority_emoji = {
             "critical": "🔴",
             "high": "🟠",
@@ -347,44 +297,35 @@ Rules:
         lines.append(f"| **Confidence** | `{confidence}` |")
         lines.append("")
 
-        # Summary
         summary = result.get("summary", "")
         if summary:
             lines.append(f"### Summary\n{summary}\n")
 
-        # Labels
         labels = result.get("labels", [])
         if labels:
             if applied:
                 lines.append("### Labels Applied ✅\n")
             else:
                 lines.append("### Suggested Labels\n")
-
             lines.append(" ".join([f"`{label}`" for label in labels]))
             lines.append("")
 
-        # Reason
         reason = result.get("reason", "")
         if reason:
             lines.append(f"### Analysis\n{reason}\n")
 
-        # Related files (from codebase scan) - collapsible section
         related_files = result.get("related_files", [])
         if related_files:
             lines.append("<details>")
             lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>")
             lines.append("")
-            lines.append("Files that may be relevant to this issue:")
-            lines.append("")
-            for f in related_files[:8]:  # Show up to 8 files
+            for f in related_files[:8]:
                 lines.append(f"- `{f}`")
             lines.append("")
             lines.append("</details>")
             lines.append("")
 
-        # Recommendations based on type
         lines.append(self._get_recommendations(issue_type, priority))
-
         lines.append(self.format_footer())
         return "\n".join(lines)
 
@@ -400,20 +341,14 @@ Rules:
         elif issue_type in ["feature", "enhancement"]:
             recs.append("- [ ] Evaluate feature fit with project roadmap")
             recs.append("- [ ] Gather community feedback")
-            recs.append("- [ ] Consider breaking into smaller tasks")
-            if priority in ["critical", "high"]:
-                recs.append("- [ ] **High demand** - Consider prioritizing this feature")
         elif issue_type == "question":
             recs.append("- [ ] Check if answered in documentation")
-            recs.append("- [ ] Consider adding to FAQ if common")
             recs.append("- [ ] May be closeable after answering")
         elif issue_type == "documentation":
             recs.append("- [ ] Good candidate for community contribution")
             recs.append("- [ ] Consider adding `good first issue` label")
         else:
-            # Default recommendations for unknown types
             recs.append("- [ ] Review and categorize appropriately")
-            recs.append("- [ ] Check for duplicates")
 
         recs.append("")
         return "\n".join(recs)
