@@ -4,7 +4,7 @@
 
 ## 数据集配置
 
-评估脚本使用 [Nutanix Code Review Dataset]([https://huggingface.co/datasets/Nutanix/codereview-dataset])。
+评估脚本使用 [Nutanix Code Review Dataset](https://huggingface.co/datasets/Nutanix/codereview-dataset)。
 
 ### 下载数据集
 
@@ -15,10 +15,10 @@ cd datasets/nutanix-codereview
 
 # 从 Hugging Face 下载
 # 方式1: 使用 huggingface-cli
-huggingface-cli download Nutanix/code_review_dataset --local-dir .
+huggingface-cli download Nutanix/codereview-dataset --local-dir .
 
 # 方式2: 手动下载
-# 访问 https://huggingface.co/datasets/Nutanix/code_review_dataset
+# 访问 https://huggingface.co/datasets/Nutanix/codereview-dataset
 # 下载 code_suggestions.csv 和 pull_requests.csv
 ```
 
