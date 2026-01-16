@@ -301,6 +301,14 @@ Be conservative with labels. Only suggest labels you're confident about."""
         text = re.sub(r'\s+_', '_', text)  # space before underscore
         text = re.sub(r'_\s+', '_', text)  # space after underscore
         text = re.sub(r'\s+\.py', '.py', text)  # space before .py
+        text = re.sub(r'\s+\.js', '.js', text)  # space before .js
+        text = re.sub(r'\s+\.ts', '.ts', text)  # space before .ts
+        # Fix common tokenization splits
+        text = re.sub(r'Kim\s+i', 'Kimi', text)  # Kim i -> Kimi
+        text = re.sub(r'PR\s+s\b', 'PRs', text)  # PR s -> PRs
+        text = re.sub(r'API\s+s\b', 'APIs', text)  # API s -> APIs
+        text = re.sub(r'(\w)\s+Client', r'\1Client', text)  # Kimi Client -> KimiClient
+        text = re.sub(r'(\w)\s+Error', r'\1Error', text)  # API Error -> APIError
         text = re.sub(r'\s{2,}', ' ', text)  # multiple spaces to single
         return text.strip()
 
@@ -328,17 +336,18 @@ Be conservative with labels. Only suggest labels you're confident about."""
             "low": "🟢"
         }
 
+        # Classification table
         lines.append("### Classification\n")
         lines.append("| Attribute | Value |")
         lines.append("|-----------|-------|")
-        lines.append(f"| **Type** | {type_emoji.get(issue_type, '📋')} `{issue_type}` |")
-        lines.append(f"| **Priority** | {priority_emoji.get(priority, '🟡')} `{priority}` |")
-        lines.append(f"| **Confidence** | `{confidence}` |")
-        lines.append("")
+        lines.append(f"| Type | {type_emoji.get(issue_type, '📋')} {issue_type} |")
+        lines.append(f"| Priority | {priority_emoji.get(priority, '🟡')} {priority} |")
+        lines.append(f"| Confidence | {confidence} |")
+        lines.append("\n")  # Extra newline after table
 
         summary = result.get("summary", "")
         if summary:
-            lines.append(f"### Summary\n{self._clean_tokenization(summary)}\n")
+            lines.append(f"### Summary\n\n{self._clean_tokenization(summary)}\n")
 
         labels = result.get("labels", [])
         if labels:
@@ -347,22 +356,19 @@ Be conservative with labels. Only suggest labels you're confident about."""
             else:
                 lines.append("### Suggested Labels\n")
             lines.append(" ".join([f"`{label}`" for label in labels]))
-            lines.append("")
+            lines.append("\n")
 
         reason = result.get("reason", "")
         if reason:
-            lines.append(f"### Analysis\n{self._clean_tokenization(reason)}\n")
+            lines.append(f"### Analysis\n\n{self._clean_tokenization(reason)}\n")
 
         related_files = result.get("related_files", [])
         if related_files:
             lines.append("<details>")
-            lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>")
-            lines.append("")
+            lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>\n")
             for f in related_files[:8]:
                 lines.append(f"- `{self._clean_tokenization(f)}`")
-            lines.append("")
-            lines.append("</details>")
-            lines.append("")
+            lines.append("\n</details>\n")
 
         lines.append(self._get_recommendations(issue_type, priority))
         lines.append(self.format_footer())
