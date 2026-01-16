@@ -193,7 +193,7 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it.
                 work_dir=work_dir,
                 model="kimi-k2-turbo-preview",
                 yolo=True,
-                max_steps_per_turn=50,  # Triage shouldn't need many steps
+                max_steps_per_turn=100,
             ) as session:
                 async for msg in session.prompt(triage_prompt):
                     if isinstance(msg, TextPart):
