@@ -1,5 +1,7 @@
 # Kimi Code Review Action
 
+基于 [Kimi](https://kimi.moonshot.cn/) (月之暗面 AI) 的智能代码审查工具
+
 🌗 AI-powered code review using [Kimi](https://kimi.moonshot.cn/) (Moonshot AI)
 
 ## Architecture
