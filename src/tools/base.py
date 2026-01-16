@@ -144,3 +144,28 @@ class BaseTool(ABC):
         os.environ["KIMI_BASE_URL"] = self.AGENT_BASE_URL
         os.environ["KIMI_MODEL_NAME"] = self.AGENT_MODEL
         return api_key
+
+    @staticmethod
+    def parse_yaml_response(response: str) -> Optional[dict]:
+        """Parse YAML from LLM response.
+        
+        Handles common formats:
+        - ```yaml ... ```
+        - ``` ... ```
+        - Raw YAML
+        
+        Returns:
+            Parsed dict or None if parsing fails.
+        """
+        import yaml
+        
+        try:
+            yaml_content = response
+            if "```yaml" in response:
+                yaml_content = response.split("```yaml")[1].split("```")[0]
+            elif "```" in response:
+                yaml_content = response.split("```")[1].split("```")[0]
+            
+            return yaml.safe_load(yaml_content)
+        except Exception:
+            return None

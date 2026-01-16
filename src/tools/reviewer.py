@@ -10,7 +10,6 @@ import logging
 import subprocess
 import tempfile
 from typing import List, Tuple, Optional
-import yaml
 import uuid
 
 from tools.base import BaseTool, DIFF_LIMIT_REVIEW
@@ -259,23 +258,14 @@ suggestions:
         incremental: bool = False, current_sha: str = None, command_quote: str = ""
     ) -> str:
         """Format a short summary when inline comments were posted."""
-        try:
-            yaml_content = response
-            if "```yaml" in response:
-                yaml_content = response.split("```yaml")[1].split("```")[0]
-            elif "```" in response:
-                yaml_content = response.split("```")[1].split("```")[0]
-            data = yaml.safe_load(yaml_content)
-            summary = data.get("summary", "").strip()
-            file_summaries = {}
-            for fs in data.get("file_summaries", []):
-                f = fs.get("file", "")
-                desc = fs.get("description", "")
-                if f and desc:
-                    file_summaries[f] = desc
-        except Exception:
-            summary = ""
-            file_summaries = {}
+        data = self.parse_yaml_response(response) or {}
+        summary = data.get("summary", "").strip()
+        file_summaries = {}
+        for fs in data.get("file_summaries", []):
+            f = fs.get("file", "")
+            desc = fs.get("description", "")
+            if f and desc:
+                file_summaries[f] = desc
 
         lines = []
         if command_quote:
@@ -387,13 +377,7 @@ suggestions:
     def _parse_suggestions(self, response: str) -> List[CodeSuggestion]:
         """Parse YAML response into CodeSuggestion objects."""
         try:
-            yaml_content = response
-            if "```yaml" in response:
-                yaml_content = response.split("```yaml")[1].split("```")[0]
-            elif "```" in response:
-                yaml_content = response.split("```")[1].split("```")[0]
-
-            data = yaml.safe_load(yaml_content)
+            data = self.parse_yaml_response(response)
             if not data:
                 logger.warning("YAML parsing returned None or empty data")
                 return []
@@ -433,14 +417,8 @@ suggestions:
         incremental: bool = False, current_sha: str = None
     ) -> str:
         """Format review in Copilot-style format."""
-        try:
-            yaml_content = response
-            if "```yaml" in response:
-                yaml_content = response.split("```yaml")[1].split("```")[0]
-            elif "```" in response:
-                yaml_content = response.split("```")[1].split("```")[0]
-            data = yaml.safe_load(yaml_content)
-        except Exception:
+        data = self.parse_yaml_response(response)
+        if not data:
             return self._format_fallback(response, current_sha)
 
         lines = []
@@ -505,14 +483,8 @@ suggestions:
 
     def _format_fallback(self, response: str, current_sha: str = None) -> str:
         """Fallback formatting when no suggestions found."""
-        try:
-            yaml_content = response
-            if "```yaml" in response:
-                yaml_content = response.split("```yaml")[1].split("```")[0]
-            elif "```" in response:
-                yaml_content = response.split("```")[1].split("```")[0]
-            
-            data = yaml.safe_load(yaml_content)
+        data = self.parse_yaml_response(response)
+        if data:
             summary = data.get("summary", "").strip()
             score = data.get("score", "N/A")
             
@@ -526,8 +498,8 @@ suggestions:
             if current_sha:
                 lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
             return "\n".join(lines)
-        except Exception:
-            result = f"## 🌗 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
-            if current_sha:
-                result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
-            return result
+        
+        result = f"## 🌗 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
+        if current_sha:
+            result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
+        return result

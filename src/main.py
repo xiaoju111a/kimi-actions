@@ -126,6 +126,10 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
     pr_number = pr.get("number")
     repo_name = event.get("repository", {}).get("full_name")
 
+    if not pr_number or not repo_name:
+        logger.error(f"Missing PR info: pr_number={pr_number}, repo_name={repo_name}")
+        return
+
     # Get context from inline comment
     file_path = comment.get("path", "")
     comment_line = comment.get("line") or comment.get("original_line", 0)
