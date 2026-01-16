@@ -3,21 +3,27 @@
 Provides common functionality for all tools:
 - Diff processing with intelligent chunking
 - Skill loading and management
-- Kimi API interaction
+- Agent SDK interaction
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
 from action_config import get_action_config
-from kimi_client import KimiClient
 from github_client import GitHubClient
 from token_handler import TokenHandler, DiffChunker, select_model_for_diff, DiffChunk
 from skill_loader import SkillManager, Skill
 from repo_config import load_repo_config, RepoConfig
 
 logger = logging.getLogger(__name__)
+
+# Diff truncation limits (tokens)
+DIFF_LIMIT_REVIEW = 15000
+DIFF_LIMIT_IMPROVE = 10000
+DIFF_LIMIT_ASK = 8000
+DIFF_LIMIT_DESCRIBE = 12000
 
 
 class BaseTool(ABC):
@@ -28,8 +34,7 @@ class BaseTool(ABC):
     - run(): The main execution logic
     """
 
-    def __init__(self, kimi: KimiClient, github: GitHubClient):
-        self.kimi = kimi
+    def __init__(self, github: GitHubClient):
         self.github = github
         self.config = get_action_config()
 
@@ -59,15 +64,9 @@ class BaseTool(ABC):
         pass
 
     def load_context(self, repo_name: str, ref: str = None) -> None:
-        """Load repository config and custom skills.
-        
-        Args:
-            repo_name: Repository name (owner/repo)
-            ref: Git ref (commit SHA, branch, tag)
-        """
+        """Load repository config and custom skills."""
         self.repo_config, validation = load_repo_config(self.github, repo_name, ref=ref)
 
-        # Log validation issues
         if not validation.valid:
             logger.error(f"Config validation failed: {validation.errors}")
         if validation.warnings:
@@ -75,21 +74,13 @@ class BaseTool(ABC):
 
         self.skill_manager.load_from_repo(self.github, repo_name, ref=ref)
 
-        # Apply custom ignore patterns (create new list to avoid mutation)
         if self.repo_config and self.repo_config.ignore_files:
             self.chunker.exclude_patterns = list(self.chunker.exclude_patterns) + self.repo_config.ignore_files
 
     def get_skill(self) -> Optional[Skill]:
-        """Get the skill for this tool, respecting overrides.
-        
-        Priority:
-        1. User override in .kimi-config.yml (skill_overrides)
-        2. Custom skill from .kimi/skills/ with same name
-        3. Built-in skill
-        """
+        """Get the skill for this tool, respecting overrides."""
         skill_to_use = self.skill_name
 
-        # Check for override in config
         if self.repo_config and self.repo_config.skill_overrides:
             override = self.repo_config.skill_overrides.get(self.skill_name)
             if override:
@@ -103,24 +94,16 @@ class BaseTool(ABC):
         return skill
 
     def get_diff(self, repo_name: str, pr_number: int) -> Tuple[str, List[DiffChunk], List[DiffChunk]]:
-        """Get and process PR diff with intelligent chunking.
-        
-        Returns:
-            Tuple of (compressed_diff, included_chunks, excluded_chunks)
-        """
+        """Get and process PR diff with intelligent chunking."""
         diff = self.github.get_pr_diff(repo_name, pr_number)
         if not diff:
             return "", [], []
 
-        # Select model based on diff size
         self.actual_model, estimated_tokens = select_model_for_diff(diff, self.config.model)
 
-        # Update kimi client model if fallback needed
         if self.actual_model != self.config.model:
             logger.info(f"Using fallback model: {self.actual_model}")
-            self.kimi.model = self.actual_model
 
-        # Chunk diff with priority scoring
         included, excluded = self.chunker.chunk_diff(diff, max_files=self.config.max_files)
         compressed = self.chunker.build_diff_string(included)
 
@@ -131,34 +114,10 @@ class BaseTool(ABC):
 
         return compressed, included, excluded
 
-    def call_kimi(self, system_prompt: str, user_prompt: str) -> str:
-        """Call Kimi API with system and user prompts.
-        
-        Args:
-            system_prompt: System message (skill instructions)
-            user_prompt: User message (PR context + diff)
-            
-        Returns:
-            Kimi response content
-        """
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        return self.kimi.chat(messages)
-
     def format_footer(self, extra_info: str = "") -> str:
-        """Generate standard footer for tool output.
-        
-        Args:
-            extra_info: Additional info to include
-            
-        Returns:
-            Formatted footer string
-        """
-        model_info = f"`{self.actual_model}`"
-        if self.actual_model != self.config.model:
-            model_info += f" (fallback from `{self.config.model}`)"
+        """Generate standard footer for tool output."""
+        # Use AGENT_MODEL for Agent SDK based tools
+        model_info = f"`{self.AGENT_MODEL}`"
 
         footer = f"---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: {model_info}"
         if extra_info:
@@ -166,3 +125,22 @@ class BaseTool(ABC):
         footer += "</sub>"
 
         return footer
+
+    # Agent SDK configuration
+    AGENT_MODEL = "kimi-k2-thinking"
+    AGENT_BASE_URL = "https://api.moonshot.cn/v1"
+
+    def setup_agent_env(self) -> Optional[str]:
+        """Setup environment variables for Agent SDK.
+        
+        Returns:
+            API key if available, None otherwise.
+        """
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return None
+        
+        os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = self.AGENT_BASE_URL
+        os.environ["KIMI_MODEL_NAME"] = self.AGENT_MODEL
+        return api_key

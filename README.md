@@ -208,7 +208,7 @@ Use these commands in Issue comments:
     
     # Optional
     language: 'en-US'               # Response language: zh-CN, en-US
-    model: 'kimi-k2-turbo-preview'  # Kimi model
+    model: 'kimi-k2-thinking'       # Kimi model (default: kimi-k2-thinking)
     review_level: 'normal'          # Review strictness: strict, normal, gentle
     max_files: '10'                 # Max files to review
     exclude_patterns: '*.lock,*.min.js'  # File patterns to exclude
@@ -287,8 +287,11 @@ Skills are automatically triggered based on PR code content.
 
 | Model | Context | Notes |
 |-------|---------|-------|
-| `kimi-k2-turbo-preview` | 256K | Fast, recommended for daily use |
-| `kimi-k2-0905-preview` | 256K | Latest K2, most capable |
+| `kimi-k2-thinking` | 256K | Default, best reasoning capability |
+| `kimi-k2-thinking-turbo` | 256K | Faster thinking model |
+| `kimi-k2-turbo-preview` | 256K | Fast, for simple tasks |
+
+All commands use **Kimi Agent SDK** with `kimi-k2-thinking` model for best results.
 
 When PR is too large, the action uses intelligent chunking to prioritize important files.
 
@@ -312,15 +315,14 @@ kimi-actions/
     ├── main.py                 # Entry point, event routing
     ├── action_config.py        # Action config (env vars)
     ├── repo_config.py          # Repo config (.kimi-config.yml)
-    ├── kimi_client.py          # Kimi API client
     ├── github_client.py        # GitHub API client
     ├── token_handler.py        # Token estimation + chunking
     ├── diff_processor.py       # Diff file filtering
     ├── skill_loader.py         # Skill loading/management
     ├── suggestion_service.py   # Suggestion filtering
     ├── models.py               # Data models
-    ├── tools/                  # Command implementations
-    │   ├── base.py             # Base class
+    ├── tools/                  # Command implementations (Agent SDK)
+    │   ├── base.py             # Base class (Agent config)
     │   ├── reviewer.py         # /review
     │   ├── describe.py         # /describe
     │   ├── improve.py          # /improve
@@ -334,6 +336,7 @@ kimi-actions/
         ├── describe/
         ├── improve/
         ├── ask/
+        ├── labels/
         └── triage/
 ```
 

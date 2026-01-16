@@ -316,3 +316,97 @@ class GitHubClient:
         except GithubException as e:
             logger.error(f"Failed to add labels to issue: {e}")
             raise
+
+    def create_pull_request(
+        self,
+        repo_name: str,
+        title: str,
+        body: str,
+        head: str,
+        base: str = "main"
+    ) -> PullRequest:
+        """Create a pull request.
+        
+        Args:
+            repo_name: Repository name (owner/repo)
+            title: PR title
+            body: PR body/description
+            head: Source branch name
+            base: Target branch name (default: main)
+            
+        Returns:
+            Created PullRequest object
+        """
+        try:
+            repo = self.client.get_repo(repo_name)
+            pr = repo.create_pull(
+                title=title,
+                body=body,
+                head=head,
+                base=base
+            )
+            logger.info(f"Created PR #{pr.number}: {title}")
+            return pr
+        except GithubException as e:
+            logger.error(f"Failed to create PR: {e}")
+            raise
+
+    def get_pr_review_comments(self, repo_name: str, pr_number: int) -> List[Dict[str, Any]]:
+        """Get all review comments (inline comments) on a PR.
+        
+        Returns:
+            List of dicts with: body, path, line, user, created_at
+        """
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            comments = []
+            for comment in pr.get_review_comments():
+                comments.append({
+                    "body": comment.body,
+                    "path": comment.path,
+                    "line": comment.line or comment.original_line,
+                    "user": comment.user.login,
+                    "created_at": comment.created_at.isoformat()
+                })
+            return comments
+        except GithubException as e:
+            logger.error(f"Failed to get review comments: {e}")
+            return []
+
+    def get_pr_issue_comments(self, repo_name: str, pr_number: int) -> List[Dict[str, Any]]:
+        """Get all issue comments (general comments) on a PR.
+        
+        Returns:
+            List of dicts with: body, user, created_at
+        """
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            comments = []
+            for comment in pr.get_issue_comments():
+                comments.append({
+                    "body": comment.body,
+                    "user": comment.user.login,
+                    "created_at": comment.created_at.isoformat()
+                })
+            return comments
+        except GithubException as e:
+            logger.error(f"Failed to get issue comments: {e}")
+            return []
+
+    def get_linked_issue_number(self, repo_name: str, pr_number: int) -> Optional[int]:
+        """Get the linked issue number from PR body (Closes #N pattern).
+        
+        Returns:
+            Issue number if found, None otherwise
+        """
+        try:
+            pr = self.get_pr(repo_name, pr_number)
+            body = pr.body or ""
+            # Match patterns like: Closes #123, Fixes #123, Resolves #123
+            match = re.search(r'(?:closes|fixes|resolves)\s+#(\d+)', body, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+            return None
+        except GithubException as e:
+            logger.error(f"Failed to get linked issue: {e}")
+            return None

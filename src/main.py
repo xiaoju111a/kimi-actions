@@ -7,7 +7,6 @@ import re
 import sys
 
 from action_config import ActionConfig
-from kimi_client import KimiClient
 from github_client import GitHubClient
 from tools import Reviewer, Describe, Improve, Ask, Labels, Triage
 
@@ -28,15 +27,32 @@ def get_input(name: str, default: str = None) -> str:
 def parse_command(comment_body: str) -> tuple:
     """Parse command from comment body.
     
+    Supports commands at the start of the body or after quoted content (> lines).
+    
     Returns:
         Tuple of (command, args) or (None, None) if no command found.
     """
+    # First try: command at the very start
     pattern = r'^/(\w+)(?:\s+(.*))?$'
     match = re.match(pattern, comment_body.strip(), re.DOTALL)
     if match:
         command = match.group(1).lower()
         args = match.group(2).strip() if match.group(2) else ""
         return command, args
+    
+    # Second try: command after quoted lines (for inline comment replies)
+    # Remove all lines starting with > (quotes)
+    lines = comment_body.strip().split('\n')
+    non_quote_lines = [line for line in lines if not line.strip().startswith('>')]
+    cleaned_body = '\n'.join(non_quote_lines).strip()
+    
+    if cleaned_body:
+        match = re.match(pattern, cleaned_body, re.DOTALL)
+        if match:
+            command = match.group(1).lower()
+            args = match.group(2).strip() if match.group(2) else ""
+            return command, args
+    
     return None, None
 
 
@@ -54,7 +70,6 @@ def handle_pr_event(event: dict, config: ActionConfig):
 
     # Initialize clients
     try:
-        kimi = KimiClient(config.kimi_api_key, config.model)
         github = GitHubClient(config.github_token)
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
@@ -68,19 +83,19 @@ def handle_pr_event(event: dict, config: ActionConfig):
     try:
         if auto_describe and action in ["opened"]:
             logger.info("Running auto describe...")
-            describe = Describe(kimi, github)
+            describe = Describe(github)
             describe.run(repo_name, pr_number, update_pr=True)
 
         if auto_review:
             logger.info("Running auto review...")
-            reviewer = Reviewer(kimi, github)
+            reviewer = Reviewer(github)
             result = reviewer.run(repo_name, pr_number, inline=True)
             if result:  # Only post if not empty (inline already posted)
                 github.post_comment(repo_name, pr_number, result)
 
         if auto_improve:
             logger.info("Running auto improve...")
-            improve = Improve(kimi, github)
+            improve = Improve(github)
             result = improve.run(repo_name, pr_number)
             github.post_comment(repo_name, pr_number, result)
 
@@ -121,7 +136,6 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
 
     # Initialize clients
     try:
-        kimi = KimiClient(config.kimi_api_key, config.model)
         github = GitHubClient(config.github_token)
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
@@ -134,7 +148,7 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
             if not args:
                 result = "❌ Please provide a question"
             else:
-                ask = Ask(kimi, github)
+                ask = Ask(github)
                 # Extract only the last few lines of diff_hunk (the relevant code)
                 hunk_lines = diff_hunk.strip().split('\n')
                 # Take last 5 lines or less, skip the @@ header
@@ -191,7 +205,6 @@ def handle_comment_event(event: dict, config: ActionConfig):
 
     # Initialize clients
     try:
-        kimi = KimiClient(config.kimi_api_key, config.model)
         github = GitHubClient(config.github_token)
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
@@ -205,7 +218,7 @@ def handle_comment_event(event: dict, config: ActionConfig):
 
     try:
         if command == "review":
-            reviewer = Reviewer(kimi, github)
+            reviewer = Reviewer(github)
             # Check for flags
             incremental = "--incremental" in args or "-i" in args
             # Build command string for quote
@@ -215,7 +228,7 @@ def handle_comment_event(event: dict, config: ActionConfig):
             result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=True, command_quote=original_command)
 
         elif command == "describe":
-            describe = Describe(kimi, github)
+            describe = Describe(github)
             if args == "--comment":
                 result = describe.generate_comment(repo_name, pr_number)
             else:
@@ -223,18 +236,18 @@ def handle_comment_event(event: dict, config: ActionConfig):
                 result = "✅ PR description updated"
 
         elif command == "improve":
-            improve = Improve(kimi, github)
+            improve = Improve(github)
             result = improve.run(repo_name, pr_number)
 
         elif command == "ask":
             if not args:
                 result = "❌ Please provide a question, e.g.: `/ask What does this function do?`"
             else:
-                ask = Ask(kimi, github)
+                ask = Ask(github)
                 result = ask.run(repo_name, pr_number, question=args)
 
         elif command == "labels" or command == "label":
-            labels_tool = Labels(kimi, github)
+            labels_tool = Labels(github)
             result = labels_tool.run(repo_name, pr_number)
 
         elif command == "help":
@@ -284,7 +297,6 @@ def handle_issue_event(event: dict, config: ActionConfig):
 
     # Initialize clients
     try:
-        kimi = KimiClient(config.kimi_api_key, config.model)
         github = GitHubClient(config.github_token)
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
@@ -296,7 +308,7 @@ def handle_issue_event(event: dict, config: ActionConfig):
     if auto_triage:
         try:
             logger.info("Running auto triage...")
-            triage = Triage(kimi, github)
+            triage = Triage(github)
             result = triage.run(repo_name, issue_number, apply_labels=True)
             github.post_issue_comment(repo_name, issue_number, result)
             logger.info("Done!")
@@ -336,7 +348,6 @@ def handle_issue_comment_event(event: dict, config: ActionConfig):
 
     # Initialize clients
     try:
-        kimi = KimiClient(config.kimi_api_key, config.model)
         github = GitHubClient(config.github_token)
     except Exception as e:
         logger.error(f"Failed to initialize clients: {e}")
@@ -350,7 +361,7 @@ def handle_issue_comment_event(event: dict, config: ActionConfig):
 
     try:
         if command == "triage":
-            triage = Triage(kimi, github)
+            triage = Triage(github)
             # Check for --no-apply flag
             apply_labels = "--no-apply" not in args and "-n" not in args
             result = triage.run(repo_name, issue_number, apply_labels=apply_labels)
@@ -399,7 +410,7 @@ def get_issue_help_message() -> str:
 ```
 
 ---
-<sub>Powered by [Kimi](https://kimi.moonshot.cn/)</sub>
+<sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
 """
 
 
@@ -430,7 +441,7 @@ def get_help_message() -> str:
 ```
 
 ---
-<sub>Powered by [Kimi](https://kimi.moonshot.cn/)</sub>
+<sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
 """
 
 
