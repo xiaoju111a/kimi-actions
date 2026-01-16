@@ -9,7 +9,7 @@ import sys
 from action_config import ActionConfig
 from kimi_client import KimiClient
 from github_client import GitHubClient
-from tools import Reviewer, Describe, Improve, Ask, Labels, Triage
+from tools import Reviewer, Describe, Improve, Ask, Labels, Triage, Fixer
 
 # Configure logging
 logging.basicConfig(
@@ -355,6 +355,11 @@ def handle_issue_comment_event(event: dict, config: ActionConfig):
             apply_labels = "--no-apply" not in args and "-n" not in args
             result = triage.run(repo_name, issue_number, apply_labels=apply_labels)
 
+        elif command == "fix":
+            # Use Agent SDK to fix the issue
+            fixer = Fixer(kimi, github)
+            result = fixer.run(repo_name, issue_number)
+
         elif command == "help":
             result = get_issue_help_message()
 
@@ -389,6 +394,7 @@ def get_issue_help_message() -> str:
 |---------|-------------|
 | `/triage` | Auto-classify issue type and suggest labels |
 | `/triage --no-apply` | Classify without applying labels |
+| `/fix` | 🤖 Auto-fix issue using Agent SDK (creates PR) |
 | `/help` | Show this help message |
 
 ### Examples
@@ -396,10 +402,11 @@ def get_issue_help_message() -> str:
 ```bash
 /triage
 /triage --no-apply
+/fix
 ```
 
 ---
-<sub>Powered by [Kimi](https://kimi.moonshot.cn/)</sub>
+<sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
 """
 
 

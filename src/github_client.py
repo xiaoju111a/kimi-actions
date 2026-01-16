@@ -316,3 +316,37 @@ class GitHubClient:
         except GithubException as e:
             logger.error(f"Failed to add labels to issue: {e}")
             raise
+
+    def create_pull_request(
+        self,
+        repo_name: str,
+        title: str,
+        body: str,
+        head: str,
+        base: str = "main"
+    ) -> PullRequest:
+        """Create a pull request.
+        
+        Args:
+            repo_name: Repository name (owner/repo)
+            title: PR title
+            body: PR body/description
+            head: Source branch name
+            base: Target branch name (default: main)
+            
+        Returns:
+            Created PullRequest object
+        """
+        try:
+            repo = self.client.get_repo(repo_name)
+            pr = repo.create_pull(
+                title=title,
+                body=body,
+                head=head,
+                base=base
+            )
+            logger.info(f"Created PR #{pr.number}: {title}")
+            return pr
+        except GithubException as e:
+            logger.error(f"Failed to create PR: {e}")
+            raise
