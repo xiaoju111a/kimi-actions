@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Cache bust - update this to force rebuild
-ARG CACHE_BUST=20260116_v2
+ARG CACHE_BUST=20260117_v1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir uv
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install semgrep for security scanning (optional, will skip if not available)
+RUN pip install --no-cache-dir semgrep || echo "Semgrep installation skipped"
 
 # Configure git for agent operations
 RUN git config --global user.name "Kimi Bot" && \

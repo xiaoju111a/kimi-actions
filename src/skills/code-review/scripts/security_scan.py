@@ -1,151 +1,192 @@
 #!/usr/bin/env python3
-"""Security scanner script for code review.
+"""Security vulnerability scanner using Semgrep.
 
-Usage: python security_scan.py --lang python --code "code_snippet"
+This script runs Semgrep with security-focused rules on the provided code
+and returns findings in a structured format for LLM analysis.
+
+Usage:
+    python security_scan.py --lang python --code "code content"
+    python security_scan.py --lang python --file path/to/file.py
+    python security_scan.py --dir /path/to/repo
 """
 
 import argparse
-import re
+import json
+import subprocess
 import sys
-from typing import List, Dict
+import tempfile
+from pathlib import Path
+from typing import List, Dict, Optional
 
 
-SECURITY_PATTERNS = {
-    "sql_injection": {
-        "pattern": r'(execute|query|cursor\.execute)\s*\(\s*["\'].*%s|{.*}|\+.*\+',
-        "message": "Potential SQL injection - use parameterized queries",
-        "severity": "critical",
-        "languages": ["python", "javascript", "java"]
-    },
-    "command_injection": {
-        "pattern": r'(os\.system|subprocess\.call|exec|eval)\s*\([^)]*\+|{|%',
-        "message": "Potential command injection - sanitize input",
-        "severity": "critical",
-        "languages": ["python"]
-    },
-    "xss": {
-        "pattern": r'innerHTML\s*=|document\.write\s*\(|\.html\s*\([^)]*\+',
-        "message": "Potential XSS vulnerability - sanitize output",
-        "severity": "high",
-        "languages": ["javascript", "typescript"]
-    },
-    "hardcoded_secret": {
-        "pattern": r'(password|secret|api_key|apikey|token|private_key)\s*=\s*["\'][a-zA-Z0-9]{8,}["\']',
-        "message": "Hardcoded secret detected - use environment variables",
-        "severity": "critical",
-        "languages": ["python", "javascript", "typescript", "java", "go"]
-    },
-    "weak_crypto": {
-        "pattern": r'(md5|sha1)\s*\(|DES|RC4',
-        "message": "Weak cryptographic algorithm - use SHA-256 or stronger",
-        "severity": "high",
-        "languages": ["python", "javascript", "java"]
-    },
-    "path_traversal": {
-        "pattern": r'open\s*\([^)]*\+|os\.path\.join\s*\([^)]*request|file_get_contents\s*\(\s*\$',
-        "message": "Potential path traversal - validate file paths",
-        "severity": "high",
-        "languages": ["python", "php"]
-    },
-    "insecure_random": {
-        "pattern": r'random\.(random|randint|choice)\s*\(|Math\.random\s*\(',
-        "message": "Insecure random for security context - use secrets module",
-        "severity": "medium",
-        "languages": ["python", "javascript"]
-    },
-    "debug_enabled": {
-        "pattern": r'DEBUG\s*=\s*True|debug\s*:\s*true',
-        "message": "Debug mode enabled - disable in production",
-        "severity": "medium",
-        "languages": ["python", "javascript"]
-    },
-    "cors_wildcard": {
-        "pattern": r'Access-Control-Allow-Origin.*\*|cors\s*\(\s*\)',
-        "message": "CORS wildcard - restrict allowed origins",
-        "severity": "medium",
-        "languages": ["python", "javascript"]
-    },
-    "unsafe_deserialization": {
-        "pattern": r'pickle\.loads|yaml\.load\s*\([^)]*Loader|unserialize\s*\(',
-        "message": "Unsafe deserialization - use safe loaders",
-        "severity": "critical",
-        "languages": ["python", "php"]
-    }
+# Semgrep rule sets for different languages
+SECURITY_RULESETS = {
+    "python": ["p/python", "p/security-audit", "p/owasp-top-ten"],
+    "javascript": ["p/javascript", "p/security-audit", "p/owasp-top-ten"],
+    "typescript": ["p/typescript", "p/security-audit", "p/owasp-top-ten"],
+    "go": ["p/golang", "p/security-audit"],
+    "java": ["p/java", "p/security-audit", "p/owasp-top-ten"],
+    "default": ["p/security-audit", "p/owasp-top-ten"],
+}
+
+# Severity mapping
+SEVERITY_MAP = {
+    "ERROR": "critical",
+    "WARNING": "high",
+    "INFO": "medium",
 }
 
 
-def scan_code(code: str, lang: str) -> List[Dict]:
-    """Scan code for security issues."""
-    issues = []
-    lines = code.split('\n')
-
-    for name, rule in SECURITY_PATTERNS.items():
-        if lang.lower() not in rule["languages"]:
-            continue
-
-        pattern = re.compile(rule["pattern"], re.IGNORECASE)
-
-        for i, line in enumerate(lines, 1):
-            if pattern.search(line):
-                issues.append({
-                    "line": i,
-                    "rule": name,
-                    "severity": rule["severity"],
-                    "message": rule["message"],
-                    "code": line.strip()[:80]
-                })
-
-    return issues
+def check_semgrep_installed() -> bool:
+    """Check if semgrep is installed."""
+    try:
+        subprocess.run(
+            ["semgrep", "--version"],
+            capture_output=True,
+            check=True
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
 
 
-def format_output(issues: List[Dict]) -> str:
-    """Format issues as readable output."""
-    if not issues:
+def run_semgrep(
+    target: str,
+    lang: str = "default",
+    timeout: int = 60
+) -> Optional[Dict]:
+    """Run semgrep on target and return results."""
+    rulesets = SECURITY_RULESETS.get(lang, SECURITY_RULESETS["default"])
+    
+    cmd = [
+        "semgrep",
+        "--json",
+        "--quiet",
+        "--timeout", str(timeout),
+    ]
+    
+    # Add rulesets
+    for ruleset in rulesets:
+        cmd.extend(["--config", ruleset])
+    
+    cmd.append(target)
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout + 10
+        )
+        
+        if result.stdout:
+            return json.loads(result.stdout)
+        return None
+        
+    except subprocess.TimeoutExpired:
+        return {"error": "Semgrep scan timed out"}
+    except json.JSONDecodeError:
+        return {"error": "Failed to parse semgrep output"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def format_findings(semgrep_output: Dict) -> str:
+    """Format semgrep findings for LLM consumption."""
+    if not semgrep_output:
         return "No security issues found."
+    
+    if "error" in semgrep_output:
+        return f"Security scan error: {semgrep_output['error']}"
+    
+    results = semgrep_output.get("results", [])
+    if not results:
+        return "✅ No security vulnerabilities detected."
+    
+    findings: List[str] = []
+    findings.append(f"⚠️ Found {len(results)} potential security issue(s):\n")
+    
+    for i, result in enumerate(results[:10], 1):  # Limit to 10 findings
+        check_id = result.get("check_id", "unknown")
+        message = result.get("extra", {}).get("message", "No description")
+        severity = SEVERITY_MAP.get(
+            result.get("extra", {}).get("severity", "INFO"),
+            "medium"
+        )
+        path = result.get("path", "unknown")
+        line = result.get("start", {}).get("line", 0)
+        code = result.get("extra", {}).get("lines", "")
+        
+        finding = f"""### {i}. {check_id}
+- **Severity**: {severity}
+- **File**: `{path}:{line}`
+- **Issue**: {message}
+"""
+        if code:
+            finding += f"- **Code**: `{code.strip()[:100]}`\n"
+        
+        findings.append(finding)
+    
+    if len(results) > 10:
+        findings.append(f"\n... and {len(results) - 10} more issues.")
+    
+    return "\n".join(findings)
 
-    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    sorted_issues = sorted(issues, key=lambda x: (severity_order.get(x["severity"], 4), x["line"]))
 
-    output = [f"Found {len(issues)} security issue(s):\n"]
-
-    for issue in sorted_issues:
-        output.append(f"[{issue['severity'].upper()}] Line {issue['line']}: {issue['rule']}")
-        output.append(f"  {issue['message']}")
-        output.append(f"  Code: {issue['code']}")
-        output.append("")
-
-    return "\n".join(output)
+def scan_code_string(code: str, lang: str) -> str:
+    """Scan a code string by writing to temp file."""
+    ext_map = {
+        "python": ".py",
+        "javascript": ".js",
+        "typescript": ".ts",
+        "go": ".go",
+        "java": ".java",
+    }
+    ext = ext_map.get(lang, ".txt")
+    
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=ext,
+        delete=False
+    ) as f:
+        f.write(code)
+        temp_path = f.name
+    
+    try:
+        result = run_semgrep(temp_path, lang)
+        return format_findings(result)
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Security scanner")
+    parser = argparse.ArgumentParser(description="Security vulnerability scanner")
     parser.add_argument("--lang", default="python", help="Programming language")
-    parser.add_argument("--code", help="Code snippet to scan")
+    parser.add_argument("--code", help="Code string to scan")
     parser.add_argument("--file", help="File path to scan")
-    parser.add_argument("--json", action="store_true", help="Output as JSON")
-
+    parser.add_argument("--dir", help="Directory to scan")
+    
     args = parser.parse_args()
-
-    if args.file:
-        with open(args.file, 'r') as f:
-            code = f.read()
-    elif args.code:
-        code = args.code
+    
+    # Check if semgrep is installed
+    if not check_semgrep_installed():
+        print("Semgrep not installed. Skipping security scan.")
+        print("Install with: pip install semgrep")
+        return
+    
+    if args.code:
+        result = scan_code_string(args.code, args.lang)
+    elif args.file:
+        semgrep_result = run_semgrep(args.file, args.lang)
+        result = format_findings(semgrep_result)
+    elif args.dir:
+        semgrep_result = run_semgrep(args.dir, args.lang)
+        result = format_findings(semgrep_result)
     else:
-        code = sys.stdin.read()
-
-    issues = scan_code(code, args.lang)
-
-    if args.json:
-        import json
-        print(json.dumps(issues, indent=2))
-    else:
-        print(format_output(issues))
-
-    # Exit with error code if critical issues found
-    critical_count = sum(1 for i in issues if i["severity"] == "critical")
-    if critical_count > 0:
+        print("Please provide --code, --file, or --dir")
         sys.exit(1)
+    
+    print(result)
 
 
 if __name__ == "__main__":
