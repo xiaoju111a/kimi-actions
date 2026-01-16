@@ -160,7 +160,26 @@ class TestReviewerIntegration:
             scripts={}
         ))
 
-        result = reviewer.run("owner/repo", 42)
+        # Mock subprocess and asyncio.run to skip git clone and agent calls
+        mock_agent_response = """```yaml
+summary: Code adds JWT authentication with some security concerns.
+score: 72
+suggestions:
+  - relevant_file: src/auth.py
+    language: python
+    one_sentence_summary: Hardcoded secret key is a security risk
+    suggestion_content: The JWT secret should be loaded from environment variables.
+    existing_code: 'token = jwt.encode({"user_id": user_id}, "secret")'
+    improved_code: 'token = jwt.encode({"user_id": user_id}, os.environ["JWT_SECRET"])'
+    relevant_lines_start: 6
+    relevant_lines_end: 6
+    label: security
+    severity: critical
+```"""
+        with patch('subprocess.run') as mock_run, \
+             patch('asyncio.run', return_value=mock_agent_response):
+            mock_run.return_value = Mock(returncode=0)
+            result = reviewer.run("owner/repo", 42)
 
         # Result could be empty (inline posted) or summary (fallback)
         assert result == "" or "Pull request overview" in result
@@ -175,6 +194,11 @@ class TestReviewerIntegration:
 
         reviewer = Reviewer(kimi, github)
         reviewer.load_context = Mock()
+        reviewer.skill_manager = Mock()
+        reviewer.skill_manager.get_skill = Mock(return_value=Mock(
+            instructions="Review the code",
+            scripts={}
+        ))
 
         result = reviewer.run("owner/repo", 42)
 
@@ -226,17 +250,6 @@ class TestImproveIntegration:
         from tools.improve import Improve
 
         kimi = MockKimiClient()
-        kimi.chat = Mock(return_value="""```yaml
-suggestions:
-  - relevant_file: src/auth.py
-    one_sentence_summary: Use environment variable for secret
-    suggestion_content: Move secret to environment variable for security.
-    existing_code: '"secret"'
-    improved_code: 'os.environ["JWT_SECRET"]'
-    language: python
-    severity: high
-```""")
-
         github = MockGitHubClient()
 
         improve = Improve(kimi, github)
@@ -247,7 +260,21 @@ suggestions:
             instructions="Provide improvements"
         ))
 
-        result = improve.run("owner/repo", 42)
+        # Mock subprocess and asyncio.run to skip git clone and agent calls
+        mock_agent_response = """```yaml
+suggestions:
+  - relevant_file: src/auth.py
+    one_sentence_summary: Use environment variable for secret
+    suggestion_content: Move secret to environment variable for security.
+    existing_code: '"secret"'
+    improved_code: 'os.environ["JWT_SECRET"]'
+    language: python
+    severity: high
+```"""
+        with patch('subprocess.run') as mock_run, \
+             patch('asyncio.run', return_value=mock_agent_response):
+            mock_run.return_value = Mock(returncode=0)
+            result = improve.run("owner/repo", 42)
 
         assert "Kimi Code Suggestions" in result
         assert "Suggestion" in result
@@ -261,8 +288,6 @@ class TestAskIntegration:
         from tools.ask import Ask
 
         kimi = MockKimiClient()
-        kimi.chat = Mock(return_value="The login function authenticates users using JWT tokens.")
-
         github = MockGitHubClient()
 
         ask = Ask(kimi, github)
@@ -273,7 +298,12 @@ class TestAskIntegration:
             instructions="Answer questions"
         ))
 
-        result = ask.run("owner/repo", 42, question="What does the login function do?")
+        # Mock subprocess and asyncio.run to skip git clone and agent calls
+        mock_agent_response = "The login function authenticates users using JWT tokens."
+        with patch('subprocess.run') as mock_run, \
+             patch('asyncio.run', return_value=mock_agent_response):
+            mock_run.return_value = Mock(returncode=0)
+            result = ask.run("owner/repo", 42, question="What does the login function do?")
 
         assert "Kimi Answer" in result
         assert "login" in result.lower() or "JWT" in result

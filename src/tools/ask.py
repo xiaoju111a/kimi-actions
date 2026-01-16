@@ -1,10 +1,18 @@
-"""Interactive Q&A tool for Kimi Actions."""
+"""Interactive Q&A tool for Kimi Actions using Agent SDK."""
+
+import asyncio
+import logging
+import os
+import subprocess
+import tempfile
 
 from tools.base import BaseTool
 
+logger = logging.getLogger(__name__)
+
 
 class Ask(BaseTool):
-    """Interactive Q&A tool for PR discussions."""
+    """Interactive Q&A tool for PR discussions using Agent SDK."""
 
     @property
     def skill_name(self) -> str:
@@ -34,25 +42,119 @@ class Ask(BaseTool):
 
         # Get skill
         skill = self.get_skill()
-        system_prompt = skill.instructions if skill else "Answer questions about the PR."
+        skill_instructions = skill.instructions if skill else "Answer questions about the PR."
 
-        user_prompt = f"""## PR Information
-Title: {pr.title}
-Description: {pr.body or "None"}
+        # Clone repo and run agent
+        with tempfile.TemporaryDirectory() as work_dir:
+            try:
+                clone_url = f"https://github.com/{repo_name}.git"
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", "-b", pr.head.ref, clone_url, work_dir],
+                    check=True, capture_output=True
+                )
+
+                response = asyncio.run(self._run_agent_ask(
+                    work_dir=work_dir,
+                    pr_title=pr.title,
+                    pr_body=pr.body or "",
+                    diff=compressed_diff,
+                    question=question,
+                    skill_instructions=skill_instructions
+                ))
+
+                return self._format_response(response, inline)
+
+            except subprocess.CalledProcessError:
+                # Fallback: clone default branch if PR branch fails
+                try:
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", clone_url, work_dir],
+                        check=True, capture_output=True
+                    )
+                    response = asyncio.run(self._run_agent_ask(
+                        work_dir=work_dir,
+                        pr_title=pr.title,
+                        pr_body=pr.body or "",
+                        diff=compressed_diff,
+                        question=question,
+                        skill_instructions=skill_instructions
+                    ))
+                    return self._format_response(response, inline)
+                except Exception as e:
+                    logger.error(f"Ask failed: {e}")
+                    return f"❌ Failed to answer question: {str(e)}"
+            except Exception as e:
+                logger.error(f"Ask failed: {e}")
+                return f"❌ Failed to answer question: {str(e)}"
+
+    async def _run_agent_ask(
+        self,
+        work_dir: str,
+        pr_title: str,
+        pr_body: str,
+        diff: str,
+        question: str,
+        skill_instructions: str
+    ) -> str:
+        """Run agent to answer the question."""
+        try:
+            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+        except ImportError:
+            return "kimi-agent-sdk not installed."
+
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return "KIMI_API_KEY is required."
+
+        os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
+        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
+
+        text_parts = []
+
+        ask_prompt = f"""{skill_instructions}
+
+## PR Information
+Title: {pr_title}
+Description: {pr_body[:2000] if pr_body else "None"}
 
 ## Code Changes
 ```diff
-{compressed_diff}
+{diff[:8000]}
 ```
 
 ## Question
 {question}
 
-Please answer the question above."""
+## Instructions
+Answer the question above. If needed, search the codebase to find relevant information.
+Be concise and helpful.
+"""
 
-        response = self.call_kimi(system_prompt, user_prompt)
+        try:
+            async with await Session.create(
+                work_dir=work_dir,
+                model="kimi-k2-turbo-preview",
+                yolo=True,
+                max_steps_per_turn=100,
+            ) as session:
+                async for msg in session.prompt(ask_prompt):
+                    if isinstance(msg, TextPart):
+                        text_parts.append(msg.text)
+                    elif isinstance(msg, ApprovalRequest):
+                        msg.resolve("approve")
 
-        # Compact format for inline comments (GitHub UI already shows code context)
+            return "".join(text_parts)
+
+        except Exception as e:
+            logger.error(f"Agent execution failed: {e}")
+            return f"Error: {str(e)}"
+
+    def _format_response(self, response: str, inline: bool) -> str:
+        """Format the response."""
+        # Clean tokenization artifacts
+        response = self._clean_tokenization(response)
+
         if inline:
             return f"""## 🌗 Kimi Answer
 
@@ -61,10 +163,24 @@ Please answer the question above."""
 {self.format_footer()}
 """
 
-        # Full format for regular comments
         return f"""## 🌗 Kimi Answer
 
 {response}
 
 {self.format_footer("Use `/ask <question>` to continue asking")}
 """
+
+    def _clean_tokenization(self, text: str) -> str:
+        """Clean up tokenization artifacts."""
+        import re
+        if not text:
+            return text
+        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
+        text = re.sub(r'([(])\s+', r'\1', text)
+        text = re.sub(r'\s+/', '/', text)
+        text = re.sub(r'/\s+', '/', text)
+        text = re.sub(r'\s+_', '_', text)
+        text = re.sub(r'_\s+', '_', text)
+        text = re.sub(r'\s+\.py', '.py', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
