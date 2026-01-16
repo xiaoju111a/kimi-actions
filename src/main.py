@@ -27,15 +27,32 @@ def get_input(name: str, default: str = None) -> str:
 def parse_command(comment_body: str) -> tuple:
     """Parse command from comment body.
     
+    Supports commands at the start of the body or after quoted content (> lines).
+    
     Returns:
         Tuple of (command, args) or (None, None) if no command found.
     """
+    # First try: command at the very start
     pattern = r'^/(\w+)(?:\s+(.*))?$'
     match = re.match(pattern, comment_body.strip(), re.DOTALL)
     if match:
         command = match.group(1).lower()
         args = match.group(2).strip() if match.group(2) else ""
         return command, args
+    
+    # Second try: command after quoted lines (for inline comment replies)
+    # Remove all lines starting with > (quotes)
+    lines = comment_body.strip().split('\n')
+    non_quote_lines = [line for line in lines if not line.strip().startswith('>')]
+    cleaned_body = '\n'.join(non_quote_lines).strip()
+    
+    if cleaned_body:
+        match = re.match(pattern, cleaned_body, re.DOTALL)
+        if match:
+            command = match.group(1).lower()
+            args = match.group(2).strip() if match.group(2) else ""
+            return command, args
+    
     return None, None
 
 
