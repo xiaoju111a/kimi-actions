@@ -108,7 +108,12 @@ class Triage(BaseTool):
                 triage_result = self._parse_response(result, repo_labels)
 
                 if not triage_result:
-                    return f"## 🌗 Kimi Triage\n\n❌ Failed to analyze this issue.\n\n**Agent Response:**\n{result[:500]}"
+                    return f"## 🌗 Kimi Triage\n\n❌ Failed to analyze this issue.\n\n**Agent Response:**\n{result[:500]}\n\n{self.format_footer()}"
+
+                # Check if we got meaningful data
+                if triage_result.get("type") == "unknown" or not triage_result.get("type"):
+                    logger.warning(f"Triage returned incomplete data: {triage_result}")
+                    return f"## 🌗 Kimi Triage\n\n⚠️ Could not fully analyze this issue.\n\n**Partial Result:**\n{triage_result}\n\n**Agent Response:**\n{result[:300]}\n\n{self.format_footer()}"
 
                 # Apply labels if requested
                 applied = False
@@ -235,6 +240,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
+                logger.debug("Found JSON in markdown code block")
             else:
                 # Try to find JSON object with "type" key
                 json_match = re.search(r'\{[^{}]*"type"[^{}]*\}', response, re.DOTALL)
@@ -243,10 +249,13 @@ Be conservative with labels. Only suggest labels you're confident about."""
                     json_match = re.search(r'\{.*\}', response, re.DOTALL)
                 if json_match:
                     json_str = json_match.group(0)
+                    logger.debug(f"Found JSON without code block: {json_str[:100]}...")
                 else:
+                    logger.warning("No JSON found in response")
                     return None
 
             data = json.loads(json_str)
+            logger.info(f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}")
 
             # Validate and filter labels
             suggested_labels = data.get("labels", [])
@@ -263,6 +272,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
 
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to parse triage response: {e}")
+            logger.debug(f"Response was: {response[:500]}...")
 
         return None
 
