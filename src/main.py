@@ -237,6 +237,11 @@ def handle_comment_event(event: dict, config: ActionConfig):
             labels_tool = Labels(kimi, github)
             result = labels_tool.run(repo_name, pr_number)
 
+        elif command == "fixup":
+            # Use Agent SDK to update the PR based on feedback
+            fixer = Fixer(kimi, github)
+            result = fixer.update(repo_name, pr_number, feedback=args)
+
         elif command == "help":
             result = get_help_message()
 
@@ -425,6 +430,7 @@ def get_help_message() -> str:
 | `/improve` | Provide code improvement suggestions |
 | `/ask <question>` | Q&A about the PR |
 | `/labels` | Auto-generate and apply PR labels |
+| `/fixup [feedback]` | 🤖 Update PR based on feedback using Agent SDK |
 | `/help` | Show this help message |
 
 ### Examples
@@ -434,10 +440,12 @@ def get_help_message() -> str:
 /review --incremental
 /ask What is the time complexity of this function?
 /labels
+/fixup Please use more descriptive variable names
+/fixup Address the review comments
 ```
 
 ---
-<sub>Powered by [Kimi](https://kimi.moonshot.cn/)</sub>
+<sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
 """
 
 

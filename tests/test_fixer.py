@@ -36,7 +36,7 @@ class TestFixer:
         fixer = Fixer(mock_kimi, mock_github)
         
         result = fixer._format_no_changes(
-            agent_output=["Analyzed the code", "No bug found"],
+            agent_summary="Analyzed the code. No bug found.",
             issue_number=42
         )
         
@@ -56,7 +56,7 @@ class TestFixer:
             pr_number=123,
             pr_url="https://github.com/test/repo/pull/123",
             files=["src/main.py", "src/utils.py"],
-            agent_output=["Fixed the bug"]
+            agent_summary="Fixed the bug in authentication logic."
         )
         
         assert "Issue Fixed" in result
@@ -76,7 +76,7 @@ class TestFixer:
             issue_number=42,
             issue_title="Bug in login",
             files=["src/auth.py"],
-            agent_output=["Fixed authentication issue"]
+            agent_summary="Fixed authentication issue by correcting the token validation."
         )
         
         assert "#42" in result
@@ -145,3 +145,76 @@ class TestFixerIntegration:
         assert Session is not None
         assert ApprovalRequest is not None
         assert TextPart is not None
+
+
+class TestFixerUpdate:
+    """Test Fixer update (fixup) functionality."""
+
+    def test_format_no_update(self):
+        """Test _format_no_update output."""
+        from tools.fixer import Fixer
+        
+        mock_kimi = Mock()
+        mock_github = Mock()
+        fixer = Fixer(mock_kimi, mock_github)
+        
+        result = fixer._format_no_update(
+            agent_summary="No changes needed based on feedback.",
+            pr_number=123
+        )
+        
+        assert "PR Update Analysis" in result
+        assert "#123" in result
+        assert "No changes" in result
+
+    def test_format_update_success(self):
+        """Test _format_update_success output."""
+        from tools.fixer import Fixer
+        
+        mock_kimi = Mock()
+        mock_github = Mock()
+        fixer = Fixer(mock_kimi, mock_github)
+        
+        result = fixer._format_update_success(
+            pr_number=123,
+            files=["src/main.py"],
+            agent_summary="Updated variable names as requested."
+        )
+        
+        assert "PR Updated" in result
+        assert "#123" in result
+        assert "src/main.py" in result
+        assert "Updated variable names" in result
+
+    def test_build_agent_summary_with_explicit_summary(self):
+        """Test _build_agent_summary extracts explicit summary."""
+        from tools.fixer import Fixer
+        
+        mock_kimi = Mock()
+        mock_github = Mock()
+        fixer = Fixer(mock_kimi, mock_github)
+        
+        final_summary = """
+---SUMMARY---
+**Problem**: Typo in README
+**Solution**: Fixed the typo
+**Files Modified**: README.md
+---END SUMMARY---
+"""
+        result = fixer._build_agent_summary([], [], final_summary)
+        
+        assert "Problem" in result
+        assert "Typo" in result
+
+    def test_build_agent_summary_fallback(self):
+        """Test _build_agent_summary fallback when no explicit summary."""
+        from tools.fixer import Fixer
+        
+        mock_kimi = Mock()
+        mock_github = Mock()
+        fixer = Fixer(mock_kimi, mock_github)
+        
+        text_parts = ["Analyzing code.", "Found the issue.", "Fixed it."]
+        result = fixer._build_agent_summary(text_parts, [], "")
+        
+        assert "Analyzing" in result or "Found" in result or "Fixed" in result

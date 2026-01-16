@@ -68,7 +68,10 @@ class Fixer(BaseTool):
     ) -> str:
         """Run agent to fix the issue."""
         try:
-            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+            from kimi_agent_sdk import (
+                Session, ApprovalRequest, TextPart, ThinkPart,
+                ToolCallPart, ToolResult
+            )
         except ImportError:
             return "❌ kimi-agent-sdk not installed. This feature requires the agent-fix branch."
 
@@ -82,10 +85,12 @@ class Fixer(BaseTool):
         os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
         os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
-        # Track agent output
-        agent_output = []
+        # Track agent output - collect text parts and build complete messages
+        text_parts = []  # Collect text fragments
+        tool_actions = []  # Track tool calls for summary
+        final_summary = ""  # Store the final summary
 
-        # Define the prompt
+        # Define the prompt - ask for explicit summary at the end
         fix_prompt = f"""You are a code fixing agent. Analyze this GitHub issue and fix it.
 
 ## Issue #{issue_number}: {issue_title}
@@ -101,7 +106,15 @@ class Fixer(BaseTool):
 
 Work in the current directory. Use the available tools to search, read, and modify files.
 
-When done, summarize what you changed.
+## IMPORTANT: Final Summary Format
+
+After completing the fix, you MUST provide a summary in this exact format:
+
+---SUMMARY---
+**Problem**: [Brief description of the issue]
+**Solution**: [What you changed to fix it]
+**Files Modified**: [List of files you modified]
+---END SUMMARY---
 """
 
         try:
@@ -114,11 +127,30 @@ When done, summarize what you changed.
                 async for msg in session.prompt(fix_prompt):
                     # Handle different message types
                     if isinstance(msg, TextPart):
-                        agent_output.append(msg.text)
-                        logger.info(f"Agent: {msg.text[:100]}...")
+                        text = msg.text
+                        text_parts.append(text)
+                        logger.info(f"Agent text: {text[:100]}...")
+                        
+                        # Check if this contains the final summary
+                        if "---SUMMARY---" in text or "**Problem**:" in text:
+                            final_summary = text
+                    elif isinstance(msg, ThinkPart):
+                        # Thinking content - useful for debugging
+                        logger.debug(f"Agent thinking: {msg.text[:100]}...")
+                    elif isinstance(msg, ToolCallPart):
+                        # Track tool calls for summary
+                        tool_name = msg.name if hasattr(msg, 'name') else str(type(msg))
+                        tool_actions.append(tool_name)
+                        logger.info(f"Agent tool call: {tool_name}")
+                    elif isinstance(msg, ToolResult):
+                        # Tool result - log but don't include in output
+                        logger.debug("Tool result received")
                     elif isinstance(msg, ApprovalRequest):
                         # Should not happen with yolo=True, but handle anyway
                         msg.resolve("approve")
+            
+            # Build agent output from collected parts
+            agent_output = self._build_agent_summary(text_parts, tool_actions, final_summary)
 
             # Check if any files were modified
             result = subprocess.run(
@@ -179,15 +211,65 @@ When done, summarize what you changed.
             logger.error(f"Agent execution failed: {e}")
             return f"❌ Agent execution failed: {str(e)}"
 
-    def _format_no_changes(self, agent_output: list, issue_number: int) -> str:
+    def _build_agent_summary(self, text_parts: list, tool_actions: list, final_summary: str) -> str:
+        """Build a clean summary from agent output.
+        
+        Args:
+            text_parts: List of text fragments from agent
+            tool_actions: List of tool names called
+            final_summary: Explicit summary if found
+            
+        Returns:
+            Clean summary string
+        """
+        # If we have an explicit summary, extract and use it
+        if final_summary and "---SUMMARY---" in final_summary:
+            # Extract content between markers
+            start = final_summary.find("---SUMMARY---") + len("---SUMMARY---")
+            end = final_summary.find("---END SUMMARY---")
+            if end > start:
+                return final_summary[start:end].strip()
+        
+        # If we have a summary with Problem/Solution format
+        if final_summary and "**Problem**:" in final_summary:
+            return final_summary.strip()
+        
+        # Otherwise, combine all text parts into a coherent summary
+        full_text = " ".join(text_parts)
+        
+        # Clean up the text - remove excessive whitespace
+        import re
+        full_text = re.sub(r'\s+', ' ', full_text).strip()
+        
+        # If text is too long, take the last meaningful portion
+        if len(full_text) > 500:
+            # Try to find the last complete sentence
+            sentences = full_text.split('. ')
+            summary_parts = []
+            char_count = 0
+            for sentence in reversed(sentences):
+                if char_count + len(sentence) < 500:
+                    summary_parts.insert(0, sentence)
+                    char_count += len(sentence)
+                else:
+                    break
+            full_text = '. '.join(summary_parts)
+        
+        # Add tool action summary if we have it
+        if tool_actions and not full_text:
+            unique_tools = list(dict.fromkeys(tool_actions))  # Preserve order, remove duplicates
+            full_text = f"Agent performed: {', '.join(unique_tools[:5])}"
+        
+        return full_text if full_text else "Fix applied successfully."
+
+    def _format_no_changes(self, agent_summary: str, issue_number: int) -> str:
         """Format response when no changes were made."""
-        summary = "\n".join(agent_output[-3:]) if agent_output else "No analysis available"
         return f"""### 🌗 Issue Fix Analysis
 
 Unable to automatically fix issue #{issue_number}.
 
 **Agent Analysis:**
-{summary}
+{agent_summary}
 
 **Possible reasons:**
 - The issue may require manual investigation
@@ -197,9 +279,8 @@ Unable to automatically fix issue #{issue_number}.
 {self.format_footer()}
 """
 
-    def _format_success(self, pr_number: int, pr_url: str, files: list, agent_output: list) -> str:
+    def _format_success(self, pr_number: int, pr_url: str, files: list, agent_summary: str) -> str:
         """Format success response."""
-        summary = "\n".join(agent_output[-3:]) if agent_output else ""
         files_list = "\n".join(f"- `{f}`" for f in files[:10])
         
         return f"""### 🌗 Issue Fixed!
@@ -210,16 +291,15 @@ Created PR #{pr_number} with the fix.
 {files_list}
 
 **Summary:**
-{summary}
+{agent_summary}
 
 👉 [Review the PR]({pr_url})
 
 {self.format_footer()}
 """
 
-    def _format_pr_body(self, issue_number: int, issue_title: str, files: list, agent_output: list) -> str:
+    def _format_pr_body(self, issue_number: int, issue_title: str, files: list, agent_summary: str) -> str:
         """Format PR body."""
-        summary = "\n".join(agent_output[-5:]) if agent_output else "Automated fix"
         files_list = "\n".join(f"- `{f}`" for f in files)
         
         return f"""## Summary
@@ -232,10 +312,263 @@ Automated fix for #{issue_number}: {issue_title}
 
 ## Analysis
 
-{summary}
+{agent_summary}
 
 ---
 <sub>🌗 Generated by [Kimi Actions](https://github.com/MoonshotAI/kimi-actions) using Agent SDK</sub>
 
 Closes #{issue_number}
+"""
+
+    def update(self, repo_name: str, pr_number: int, feedback: str = "", **kwargs) -> str:
+        """Update an existing PR based on feedback.
+
+        Args:
+            repo_name: Repository name (owner/repo)
+            pr_number: PR number to update
+            feedback: User feedback/request for changes
+        """
+        # Get PR details
+        pr = self.github.get_pr(repo_name, pr_number)
+        branch_name = pr.head.ref
+        
+        logger.info(f"Updating PR #{pr_number} on branch {branch_name}")
+
+        # Get linked issue number
+        issue_number = self.github.get_linked_issue_number(repo_name, pr_number)
+        
+        # Get review comments and issue comments for context
+        review_comments = self.github.get_pr_review_comments(repo_name, pr_number)
+        issue_comments = self.github.get_pr_issue_comments(repo_name, pr_number)
+
+        # Clone repo and checkout the PR branch
+        with tempfile.TemporaryDirectory() as work_dir:
+            try:
+                # Clone the repo
+                github_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("INPUT_GITHUB_TOKEN")
+                if github_token:
+                    clone_url = f"https://x-access-token:{github_token}@github.com/{repo_name}.git"
+                else:
+                    clone_url = f"https://github.com/{repo_name}.git"
+                
+                subprocess.run(
+                    ["git", "clone", "--branch", branch_name, "--depth", "10", clone_url, work_dir],
+                    check=True, capture_output=True
+                )
+                
+                # Run agent update
+                result = asyncio.run(self._run_agent_update(
+                    work_dir=work_dir,
+                    repo_name=repo_name,
+                    pr_number=pr_number,
+                    branch_name=branch_name,
+                    issue_number=issue_number,
+                    pr_title=pr.title,
+                    pr_body=pr.body or "",
+                    feedback=feedback,
+                    review_comments=review_comments,
+                    issue_comments=issue_comments
+                ))
+                
+                return result
+                
+            except Exception as e:
+                logger.error(f"Update failed: {e}")
+                return f"❌ Failed to update PR: {str(e)}"
+
+    async def _run_agent_update(
+        self,
+        work_dir: str,
+        repo_name: str,
+        pr_number: int,
+        branch_name: str,
+        issue_number: int | None,
+        pr_title: str,
+        pr_body: str,
+        feedback: str,
+        review_comments: list,
+        issue_comments: list
+    ) -> str:
+        """Run agent to update the PR based on feedback."""
+        try:
+            from kimi_agent_sdk import (
+                Session, ApprovalRequest, TextPart, ThinkPart,
+                ToolCallPart, ToolResult
+            )
+        except ImportError:
+            return "❌ kimi-agent-sdk not installed. This feature requires the agent-fix branch."
+
+        # Ensure KIMI_API_KEY is set for agent-sdk
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return "❌ KIMI_API_KEY is required for /fixup command"
+        
+        # Set environment variables for agent-sdk (kimi-cli)
+        os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
+        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
+
+        # Track agent output
+        text_parts = []
+        tool_actions = []
+        final_summary = ""
+
+        # Format review comments for context
+        review_context = ""
+        if review_comments:
+            review_context = "\n## Review Comments (inline feedback)\n"
+            for c in review_comments[-10:]:  # Last 10 comments
+                review_context += f"- **{c['path']}:{c['line']}** ({c['user']}): {c['body']}\n"
+
+        # Format issue comments for context (skip bot comments)
+        comment_context = ""
+        if issue_comments:
+            comment_context = "\n## Discussion Comments\n"
+            for c in issue_comments[-5:]:  # Last 5 comments
+                if "kimi" not in c['user'].lower():  # Skip bot comments
+                    comment_context += f"- **{c['user']}**: {c['body'][:200]}\n"
+
+        # Build the prompt
+        update_prompt = f"""You are a code fixing agent. Update this PR based on the feedback.
+
+## PR #{pr_number}: {pr_title}
+
+{pr_body}
+
+{review_context}
+
+{comment_context}
+
+## User Request
+
+{feedback if feedback else "Please address the review comments and improve the code."}
+
+## Instructions
+
+1. Read the relevant files that need changes
+2. Understand the feedback and what changes are requested
+3. Make the necessary code changes
+4. Verify your changes are correct
+
+Work in the current directory. Use the available tools to search, read, and modify files.
+
+## IMPORTANT: Final Summary Format
+
+After completing the update, you MUST provide a summary in this exact format:
+
+---SUMMARY---
+**Changes Made**: [What you changed based on feedback]
+**Files Modified**: [List of files you modified]
+---END SUMMARY---
+"""
+
+        try:
+            async with await Session.create(
+                work_dir=work_dir,
+                model="kimi-k2-turbo-preview",
+                yolo=True,
+                max_steps_per_turn=20,
+            ) as session:
+                async for msg in session.prompt(update_prompt):
+                    if isinstance(msg, TextPart):
+                        text = msg.text
+                        text_parts.append(text)
+                        logger.info(f"Agent text: {text[:100]}...")
+                        if "---SUMMARY---" in text or "**Changes Made**:" in text:
+                            final_summary = text
+                    elif isinstance(msg, ThinkPart):
+                        logger.debug(f"Agent thinking: {msg.text[:100]}...")
+                    elif isinstance(msg, ToolCallPart):
+                        tool_name = msg.name if hasattr(msg, 'name') else str(type(msg))
+                        tool_actions.append(tool_name)
+                        logger.info(f"Agent tool call: {tool_name}")
+                    elif isinstance(msg, ToolResult):
+                        logger.debug("Tool result received")
+                    elif isinstance(msg, ApprovalRequest):
+                        msg.resolve("approve")
+            
+            # Build agent output
+            agent_output = self._build_agent_summary(text_parts, tool_actions, final_summary)
+
+            # Check if any files were modified
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=work_dir, capture_output=True, text=True
+            )
+            
+            if not result.stdout.strip():
+                return self._format_no_update(agent_output, pr_number)
+
+            # Get the changes
+            modified_files = [
+                line.split()[-1] for line in result.stdout.strip().split('\n')
+                if line.strip()
+            ]
+            
+            # Commit changes
+            subprocess.run(["git", "add", "-A"], cwd=work_dir, check=True)
+            commit_msg = f"fixup: address feedback on PR #{pr_number}"
+            if feedback:
+                commit_msg += f"\n\n{feedback[:100]}"
+            subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=work_dir, check=True,
+                env={**os.environ, "GIT_AUTHOR_NAME": "Kimi Bot", "GIT_AUTHOR_EMAIL": "kimi@moonshot.cn",
+                     "GIT_COMMITTER_NAME": "Kimi Bot", "GIT_COMMITTER_EMAIL": "kimi@moonshot.cn"}
+            )
+
+            # Push to the same branch
+            github_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("INPUT_GITHUB_TOKEN")
+            if github_token:
+                push_url = f"https://x-access-token:{github_token}@github.com/{repo_name}.git"
+                push_result = subprocess.run(
+                    ["git", "push", push_url, branch_name],
+                    cwd=work_dir, capture_output=True, text=True
+                )
+                if push_result.returncode != 0:
+                    error_msg = (push_result.stderr or push_result.stdout or "Unknown error")
+                    error_msg = error_msg.replace(github_token, "***")
+                    logger.error(f"Git push failed: {error_msg}")
+                    return f"❌ Failed to push changes: {error_msg}"
+            else:
+                return "❌ GITHUB_TOKEN required to push changes"
+
+            return self._format_update_success(pr_number, modified_files, agent_output)
+
+        except Exception as e:
+            logger.error(f"Agent execution failed: {e}")
+            return f"❌ Agent execution failed: {str(e)}"
+
+    def _format_no_update(self, agent_summary: str, pr_number: int) -> str:
+        """Format response when no changes were made during update."""
+        return f"""### 🌗 PR Update Analysis
+
+No changes were made to PR #{pr_number}.
+
+**Agent Analysis:**
+{agent_summary}
+
+**Possible reasons:**
+- The requested changes may already be addressed
+- The feedback may need clarification
+- Manual intervention may be required
+
+{self.format_footer()}
+"""
+
+    def _format_update_success(self, pr_number: int, files: list, agent_summary: str) -> str:
+        """Format success response for PR update."""
+        files_list = "\n".join(f"- `{f}`" for f in files[:10])
+        
+        return f"""### 🌗 PR Updated!
+
+Pushed new changes to PR #{pr_number}.
+
+**Modified files:**
+{files_list}
+
+**Summary:**
+{agent_summary}
+
+{self.format_footer()}
 """
