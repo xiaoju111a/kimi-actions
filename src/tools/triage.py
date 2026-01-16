@@ -152,7 +152,7 @@ class Triage(BaseTool):
         # Collect agent output
         text_parts = []
 
-        # Build prompt with skill instructions
+        # Build prompt with skill instructions - focused and efficient
         triage_prompt = f"""{skill_instructions}
 
 ---
@@ -170,11 +170,9 @@ class Triage(BaseTool):
 
 ## Instructions
 
-1. Read the issue carefully
-2. If the issue mentions specific files, functions, or components, search the codebase to verify they exist
-3. Based on your analysis, classify the issue
+Analyze this issue and classify it. Do NOT explore the entire codebase - only search if the issue mentions specific files.
 
-Return your analysis as JSON:
+Return your analysis as JSON (this is REQUIRED):
 ```json
 {{
     "type": "bug|feature|enhancement|question|documentation|other",
@@ -183,15 +181,11 @@ Return your analysis as JSON:
     "confidence": "high|medium|low",
     "summary": "One-line summary",
     "reason": "Brief explanation",
-    "related_files": ["file1.py", "file2.js"]
+    "related_files": ["file1.py"]
 }}
 ```
 
-Rules:
-- Only use labels from the available list
-- Maximum 4 labels
-- Be conservative - only add labels you're confident about
-- Search the codebase if the issue mentions specific code
+IMPORTANT: You MUST output the JSON block above. Do not skip it.
 """
 
         try:
@@ -237,28 +231,35 @@ Be conservative with labels. Only suggest labels you're confident about."""
         """Parse JSON response and validate labels."""
         try:
             # Extract JSON from response
+            # Try markdown code block first
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
-            if not json_match:
-                json_match = re.search(r'\{[^{}]*"type"[^{}]*\}', response, re.DOTALL)
-            if not json_match:
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-
             if json_match:
-                json_str = json_match.group(1) if '```' in response else json_match.group()
-                data = json.loads(json_str)
+                json_str = json_match.group(1)
+            else:
+                # Try to find JSON object with "type" key
+                json_match = re.search(r'\{[^{}]*"type"[^{}]*\}', response, re.DOTALL)
+                if not json_match:
+                    # Last resort: any JSON object
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                else:
+                    return None
 
-                # Validate and filter labels
-                suggested_labels = data.get("labels", [])
-                valid = []
+            data = json.loads(json_str)
 
-                valid_labels_lower = {v.lower(): v for v in valid_labels}
-                for label in suggested_labels:
-                    label_lower = label.lower()
-                    if label_lower in valid_labels_lower:
-                        valid.append(valid_labels_lower[label_lower])
+            # Validate and filter labels
+            suggested_labels = data.get("labels", [])
+            valid = []
 
-                data["labels"] = valid[:4]
-                return data
+            valid_labels_lower = {v.lower(): v for v in valid_labels}
+            for label in suggested_labels:
+                label_lower = label.lower()
+                if label_lower in valid_labels_lower:
+                    valid.append(valid_labels_lower[label_lower])
+
+            data["labels"] = valid[:4]
+            return data
 
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to parse triage response: {e}")
