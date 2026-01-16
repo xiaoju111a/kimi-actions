@@ -150,10 +150,17 @@ When done, summarize what you changed.
             github_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("INPUT_GITHUB_TOKEN")
             if github_token:
                 push_url = f"https://x-access-token:{github_token}@github.com/{repo_name}.git"
-                subprocess.run(
-                    ["git", "push", push_url, branch_name],
-                    cwd=work_dir, check=True, capture_output=True
+                # Force push in case branch exists from previous attempt
+                push_result = subprocess.run(
+                    ["git", "push", "-f", push_url, branch_name],
+                    cwd=work_dir, capture_output=True, text=True
                 )
+                if push_result.returncode != 0:
+                    # Sanitize error message to hide token
+                    error_msg = (push_result.stderr or push_result.stdout or "Unknown error")
+                    error_msg = error_msg.replace(github_token, "***")
+                    logger.error(f"Git push failed: {error_msg}")
+                    return f"❌ Failed to push branch: {error_msg}"
             else:
                 return "❌ GITHUB_TOKEN required to push changes"
 
