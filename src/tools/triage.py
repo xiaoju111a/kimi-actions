@@ -289,6 +289,21 @@ Be conservative with labels. Only suggest labels you're confident about."""
 
         return None
 
+    def _clean_tokenization(self, text: str) -> str:
+        """Clean up tokenization artifacts (extra spaces around punctuation)."""
+        if not text:
+            return text
+        # Remove spaces around common punctuation
+        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)  # space before punctuation
+        text = re.sub(r'([(])\s+', r'\1', text)  # space after opening paren
+        text = re.sub(r'\s+/', '/', text)  # space before slash
+        text = re.sub(r'/\s+', '/', text)  # space after slash
+        text = re.sub(r'\s+_', '_', text)  # space before underscore
+        text = re.sub(r'_\s+', '_', text)  # space after underscore
+        text = re.sub(r'\s+\.py', '.py', text)  # space before .py
+        text = re.sub(r'\s{2,}', ' ', text)  # multiple spaces to single
+        return text.strip()
+
     def _format_result(self, result: Dict, applied: bool) -> str:
         """Format the triage result message."""
         lines = ["## 🌗 Kimi Issue Triage\n"]
@@ -323,7 +338,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
 
         summary = result.get("summary", "")
         if summary:
-            lines.append(f"### Summary\n{summary}\n")
+            lines.append(f"### Summary\n{self._clean_tokenization(summary)}\n")
 
         labels = result.get("labels", [])
         if labels:
@@ -336,7 +351,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
 
         reason = result.get("reason", "")
         if reason:
-            lines.append(f"### Analysis\n{reason}\n")
+            lines.append(f"### Analysis\n{self._clean_tokenization(reason)}\n")
 
         related_files = result.get("related_files", [])
         if related_files:
@@ -344,7 +359,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
             lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>")
             lines.append("")
             for f in related_files[:8]:
-                lines.append(f"- `{f}`")
+                lines.append(f"- `{self._clean_tokenization(f)}`")
             lines.append("")
             lines.append("</details>")
             lines.append("")
