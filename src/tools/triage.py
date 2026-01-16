@@ -307,8 +307,9 @@ Be conservative with labels. Only suggest labels you're confident about."""
         # Remove spaces around common punctuation
         text = re.sub(r'\s+([.,;:!?)])', r'\1', text)  # space before punctuation
         text = re.sub(r'([(])\s+', r'\1', text)  # space after opening paren
-        text = re.sub(r'\s+/', '/', text)  # space before slash
-        text = re.sub(r'/\s+', '/', text)  # space after slash
+        # Fix spaces around slashes in file paths (but not before /commands)
+        text = re.sub(r'(\w)\s+/\s*(\w)', r'\1/\2', text)  # src/ tools -> src/tools
+        text = re.sub(r'/\s+(\w)', r'/\1', text)  # / review -> /review (space after slash)
         text = re.sub(r'\s+_', '_', text)  # space before underscore
         text = re.sub(r'_\s+', '_', text)  # space after underscore
         text = re.sub(r'\s+\.py', '.py', text)  # space before .py
@@ -317,8 +318,11 @@ Be conservative with labels. Only suggest labels you're confident about."""
         # Fix spaces around hyphens in compound words
         text = re.sub(r'(\d+)\s+-\s*(\w)', r'\1-\2', text)  # 30 -second -> 30-second
         text = re.sub(r'(\d+)\s*-\s+(\w)', r'\1-\2', text)  # 30- second -> 30-second
+        # Fix spaces around + in expressions like "10 + files"
+        text = re.sub(r'(\d+)\s+\+\s+(\w)', r'\1+ \2', text)  # 10 + files -> 10+ files
         # Fix common tokenization splits (capital letter after space at word start)
         text = re.sub(r'\bK\s+imi', 'Kimi', text)  # K imi -> Kimi
+        text = re.sub(r'\bk\s+imi', 'kimi', text)  # k imi -> kimi (lowercase)
         text = re.sub(r'\bA\s+ffects', 'Affects', text)  # A ffects -> Affects
         text = re.sub(r'\bA\s+PI', 'API', text)  # A PI -> API
         text = re.sub(r'\bP\s+R', 'PR', text)  # P R -> PR
@@ -327,6 +331,11 @@ Be conservative with labels. Only suggest labels you're confident about."""
         text = re.sub(r'API\s+s\b', 'APIs', text)  # API s -> APIs
         text = re.sub(r'(\w)\s+Client', r'\1Client', text)  # Kimi Client -> KimiClient
         text = re.sub(r'(\w)\s+Error', r'\1Error', text)  # API Error -> APIError
+        # Fix method calls with space before parenthesis
+        text = re.sub(r'(\w+)\s+\(\s*\)', r'\1()', text)  # .chat () -> .chat()
+        text = re.sub(r'(\w+)\s+\(', r'\1(', text)  # method ( -> method(
+        # Fix "the/command" -> "the /command" (slash commands need space before)
+        text = re.sub(r'(\w)(/)(\w+)\b', r'\1 \2\3', text)  # the/review -> the /review
         text = re.sub(r'\s{2,}', ' ', text)  # multiple spaces to single
         return text.strip()
 
