@@ -6,7 +6,7 @@ import logging
 import subprocess
 import tempfile
 
-from tools.base import BaseTool
+from tools.base import BaseTool, DIFF_LIMIT_ASK
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ Description: {pr_body[:2000] if pr_body else "None"}
 
 ## Code Changes
 ```diff
-{diff[:8000]}
+{diff[:DIFF_LIMIT_ASK]}
 ```
 
 ## Question

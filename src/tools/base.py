@@ -19,6 +19,12 @@ from repo_config import load_repo_config, RepoConfig
 
 logger = logging.getLogger(__name__)
 
+# Diff truncation limits (tokens)
+DIFF_LIMIT_REVIEW = 15000
+DIFF_LIMIT_IMPROVE = 10000
+DIFF_LIMIT_ASK = 8000
+DIFF_LIMIT_DESCRIBE = 12000
+
 
 class BaseTool(ABC):
     """Abstract base class for all tools.

@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional
 import yaml
 import uuid
 
-from tools.base import BaseTool
+from tools.base import BaseTool, DIFF_LIMIT_REVIEW
 from token_handler import DiffChunk
 from models import CodeSuggestion, SeverityLevel, ReviewOptions, SuggestionControl
 from suggestion_service import SuggestionService
@@ -143,7 +143,7 @@ Branch: {pr_branch}
 
 ## Code Changes
 ```diff
-{diff[:15000]}
+{diff[:DIFF_LIMIT_REVIEW]}
 ```
 
 ## Instructions

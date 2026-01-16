@@ -2,11 +2,12 @@
 
 import asyncio
 import logging
+import tempfile
 
 import yaml
 from typing import List, Tuple
 
-from tools.base import BaseTool
+from tools.base import BaseTool, DIFF_LIMIT_DESCRIBE
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ Branch: {pr_branch}
 
 ## Code Changes
 ```diff
-{diff[:12000]}
+{diff[:DIFF_LIMIT_DESCRIBE]}
 ```
 
 Please generate PR description in YAML format:
@@ -101,18 +102,24 @@ files:
 """
 
         try:
-            async with await Session.create(
-                work_dir="/tmp",
-                model=self.AGENT_MODEL,
-                yolo=True,
-                max_steps_per_turn=100,
-            ) as session:
-                async for msg in session.prompt(describe_prompt):
-                    if isinstance(msg, TextPart):
-                        text_parts.append(msg.text)
-                    elif isinstance(msg, ApprovalRequest):
-                        msg.resolve("approve")
-            return "".join(text_parts)
+            with tempfile.TemporaryDirectory() as work_dir:
+                async with await Session.create(
+                    work_dir=work_dir,
+                    model=self.AGENT_MODEL,
+                    yolo=True,
+                    max_steps_per_turn=100,
+                ) as session:
+                    async for msg in session.prompt(describe_prompt):
+                        if isinstance(msg, TextPart):
+                            text_parts.append(msg.text)
+                        elif isinstance(msg, ApprovalRequest):
+                            msg.resolve("approve")
+                return "".join(text_parts)
+        except ImportError:
+            return f'```yaml\ntitle: "{pr_title}"\ndescription: "kimi-agent-sdk not installed"\n```'
+        except (OSError, IOError) as e:
+            logger.error(f"File system error: {e}")
+            return f'```yaml\ntitle: "{pr_title}"\ndescription: "Error: {str(e)}"\n```'
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
             return f'```yaml\ntitle: "{pr_title}"\ndescription: "Error: {str(e)}"\n```'

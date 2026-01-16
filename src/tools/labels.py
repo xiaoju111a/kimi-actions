@@ -7,7 +7,7 @@ import logging
 import re
 from typing import List
 
-from tools.base import BaseTool
+from tools.base import BaseTool, DIFF_LIMIT_ASK
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ Branch: {pr_branch}
 
 ## Code Changes
 ```diff
-{diff[:8000]}
+{diff[:DIFF_LIMIT_ASK]}
 ```
 
 Analyze this PR and return appropriate labels as JSON:

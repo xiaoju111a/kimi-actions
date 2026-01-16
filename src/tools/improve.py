@@ -8,7 +8,7 @@ import tempfile
 import yaml
 from typing import List
 
-from tools.base import BaseTool
+from tools.base import BaseTool, DIFF_LIMIT_IMPROVE
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class Improve(BaseTool):
 
 ## Code Changes
 ```diff
-{diff[:10000]}
+{diff[:DIFF_LIMIT_IMPROVE]}
 ```
 
 ## Instructions

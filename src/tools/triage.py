@@ -199,7 +199,6 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it. Search for rela
                 async for msg in session.prompt(triage_prompt):
                     if isinstance(msg, TextPart):
                         text_parts.append(msg.text)
-                        logger.info(f"Agent: {msg.text[:100]}...")
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
 
