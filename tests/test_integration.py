@@ -213,19 +213,6 @@ class TestDescribeIntegration:
         from tools.describe import Describe
 
         kimi = MockKimiClient()
-        kimi.chat = Mock(return_value="""```yaml
-title: "feat(auth): add JWT authentication"
-type: feature
-description: This PR implements JWT-based authentication.
-labels:
-  - enhancement
-  - security
-files:
-  - filename: src/auth.py
-    change_type: added
-    summary: JWT authentication module
-```""")
-
         github = MockGitHubClient()
 
         describe = Describe(kimi, github)
@@ -236,7 +223,21 @@ files:
             instructions="Generate PR description"
         ))
 
-        title, body = describe.run("owner/repo", 42, update_pr=False)
+        # Mock asyncio.run to skip agent calls
+        mock_agent_response = """```yaml
+title: "feat(auth): add JWT authentication"
+type: feature
+description: This PR implements JWT-based authentication.
+labels:
+  - enhancement
+  - security
+files:
+  - filename: src/auth.py
+    change_type: added
+    summary: JWT authentication module
+```"""
+        with patch('asyncio.run', return_value=mock_agent_response):
+            title, body = describe.run("owner/repo", 42, update_pr=False)
 
         assert "auth" in title.lower() or "jwt" in title.lower()
         assert "authentication" in body.lower() or "JWT" in body
