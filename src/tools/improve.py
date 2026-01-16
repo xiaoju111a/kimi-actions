@@ -145,7 +145,18 @@ suggestions:
             if "```yaml" in response:
                 yaml_content = response.split("```yaml")[1].split("```")[0]
             elif "```" in response:
-                yaml_content = response.split("```")[1].split("```")[0]
+                # Find the first code block that looks like YAML
+                parts = response.split("```")
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:  # Odd indices are code blocks
+                        # Skip language identifier if present
+                        lines = part.strip().split('\n')
+                        if lines and lines[0].strip() in ['yaml', 'yml', '']:
+                            yaml_content = '\n'.join(lines[1:]) if lines[0].strip() else part
+                            break
+                        elif 'suggestions:' in part:
+                            yaml_content = part
+                            break
 
             data = yaml.safe_load(yaml_content)
             suggestions = data.get("suggestions", [])
@@ -155,10 +166,22 @@ suggestions:
 
             return self._format_structured(suggestions)
 
-        except Exception:
-            # Clean and return raw response
-            cleaned = response
-            return f"## 🌗 Kimi Code Suggestions\n\n{cleaned}\n\n{self.format_footer()}"
+        except Exception as e:
+            logger.warning(f"Failed to parse YAML: {e}")
+            # Try to extract suggestions from raw response
+            if "suggestions:" in response:
+                # Find YAML-like content
+                start = response.find("suggestions:")
+                yaml_like = response[start:]
+                try:
+                    data = yaml.safe_load(yaml_like)
+                    if data and "suggestions" in data:
+                        return self._format_structured(data["suggestions"])
+                except Exception:
+                    pass
+            
+            # Return raw response with header
+            return f"## 🌗 Kimi Code Suggestions\n\n{response}\n\n{self.format_footer()}"
 
     def _format_structured(self, suggestions: List[dict]) -> str:
         """Format structured suggestions."""
