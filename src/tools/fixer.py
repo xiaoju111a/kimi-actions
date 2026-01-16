@@ -112,7 +112,7 @@ Be efficient. Make the fix quickly and stop.
                 work_dir=work_dir,
                 model="kimi-k2-turbo-preview",
                 yolo=True,  # Auto-approve tool calls
-                max_steps_per_turn=30,  # Increased from 20
+                max_steps_per_turn=100,
             ) as session:
                 async for msg in session.prompt(fix_prompt):
                     # Handle different message types
@@ -447,7 +447,7 @@ After completing, provide a brief summary of what you changed.
                 work_dir=work_dir,
                 model="kimi-k2-turbo-preview",
                 yolo=True,
-                max_steps_per_turn=30,  # Increased from 20
+                max_steps_per_turn=100,
             ) as session:
                 async for msg in session.prompt(update_prompt):
                     if isinstance(msg, TextPart):
