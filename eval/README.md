@@ -4,7 +4,7 @@
 
 ## 数据集配置
 
-评估脚本使用 [Nutanix Code Review Dataset](https://huggingface.co/datasets/Nutanix/code_review_dataset)。
+评估脚本使用 [Nutanix Code Review Dataset]([https://huggingface.co/datasets/Nutanix/codereview-dataset])。
 
 ### 下载数据集
 
