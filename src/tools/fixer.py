@@ -129,7 +129,7 @@ Be efficient. Make the fix quickly and stop.
                         logger.debug(f"Agent thinking: {msg.text[:100]}...")
                     elif isinstance(msg, ToolCallPart):
                         # Track tool calls for summary
-                        tool_name = msg.name if hasattr(msg, 'name') else str(type(msg))
+                        tool_name = getattr(msg, 'name', None) or getattr(msg, 'function', {}).get('name', 'unknown')
                         tool_actions.append(tool_name)
                         logger.info(f"Agent tool call: {tool_name}")
                     elif isinstance(msg, ToolResult):
@@ -459,7 +459,7 @@ After completing, provide a brief summary of what you changed.
                     elif isinstance(msg, ThinkPart):
                         logger.debug(f"Agent thinking: {msg.text[:100]}...")
                     elif isinstance(msg, ToolCallPart):
-                        tool_name = msg.name if hasattr(msg, 'name') else str(type(msg))
+                        tool_name = getattr(msg, 'name', None) or getattr(msg, 'function', {}).get('name', 'unknown')
                         tool_actions.append(tool_name)
                         logger.info(f"Agent tool call: {tool_name}")
                     elif isinstance(msg, ToolResult):
