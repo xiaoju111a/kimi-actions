@@ -72,6 +72,14 @@ class Fixer(BaseTool):
         except ImportError:
             return "❌ kimi-agent-sdk not installed. This feature requires the agent-fix branch."
 
+        # Ensure KIMI_API_KEY is set for agent-sdk
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return "❌ KIMI_API_KEY is required for /fix command"
+        
+        # Set environment variable for agent-sdk
+        os.environ["KIMI_API_KEY"] = api_key
+
         # Track agent output
         agent_output = []
 
