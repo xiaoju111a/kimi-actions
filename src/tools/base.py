@@ -110,9 +110,8 @@ class BaseTool(ABC):
 
     def format_footer(self, extra_info: str = "") -> str:
         """Generate standard footer for tool output."""
-        model_info = f"`{self.actual_model}`"
-        if self.actual_model != self.config.model:
-            model_info += f" (fallback from `{self.config.model}`)"
+        # Use AGENT_MODEL for Agent SDK based tools
+        model_info = f"`{self.AGENT_MODEL}`"
 
         footer = f"---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: {model_info}"
         if extra_info:
