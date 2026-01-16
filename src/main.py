@@ -8,7 +8,7 @@ import sys
 
 from action_config import ActionConfig
 from github_client import GitHubClient
-from tools import Reviewer, Describe, Improve, Ask, Labels, Triage, Fixer
+from tools import Reviewer, Describe, Improve, Ask, Labels, Triage
 
 # Configure logging
 logging.basicConfig(
@@ -250,11 +250,6 @@ def handle_comment_event(event: dict, config: ActionConfig):
             labels_tool = Labels(github)
             result = labels_tool.run(repo_name, pr_number)
 
-        elif command == "fixup":
-            # Use Agent SDK to update the PR based on feedback
-            fixer = Fixer(github)
-            result = fixer.update(repo_name, pr_number, feedback=args)
-
         elif command == "help":
             result = get_help_message()
 
@@ -371,11 +366,6 @@ def handle_issue_comment_event(event: dict, config: ActionConfig):
             apply_labels = "--no-apply" not in args and "-n" not in args
             result = triage.run(repo_name, issue_number, apply_labels=apply_labels)
 
-        elif command == "fix":
-            # Use Agent SDK to fix the issue
-            fixer = Fixer(github)
-            result = fixer.run(repo_name, issue_number)
-
         elif command == "help":
             result = get_issue_help_message()
 
@@ -410,7 +400,6 @@ def get_issue_help_message() -> str:
 |---------|-------------|
 | `/triage` | Auto-classify issue type and suggest labels |
 | `/triage --no-apply` | Classify without applying labels |
-| `/fix` | 🤖 Auto-fix issue using Agent SDK (creates PR) |
 | `/help` | Show this help message |
 
 ### Examples
@@ -418,7 +407,6 @@ def get_issue_help_message() -> str:
 ```bash
 /triage
 /triage --no-apply
-/fix
 ```
 
 ---
@@ -441,7 +429,6 @@ def get_help_message() -> str:
 | `/improve` | Provide code improvement suggestions |
 | `/ask <question>` | Q&A about the PR |
 | `/labels` | Auto-generate and apply PR labels |
-| `/fixup [feedback]` | 🤖 Update PR based on feedback using Agent SDK |
 | `/help` | Show this help message |
 
 ### Examples
@@ -451,8 +438,6 @@ def get_help_message() -> str:
 /review --incremental
 /ask What is the time complexity of this function?
 /labels
-/fixup Please use more descriptive variable names
-/fixup Address the review comments
 ```
 
 ---
