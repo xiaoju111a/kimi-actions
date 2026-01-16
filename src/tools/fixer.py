@@ -77,8 +77,10 @@ class Fixer(BaseTool):
         if not api_key:
             return "❌ KIMI_API_KEY is required for /fix command"
         
-        # Set environment variable for agent-sdk
+        # Set environment variables for agent-sdk (kimi-cli)
         os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
+        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         # Track agent output
         agent_output = []
