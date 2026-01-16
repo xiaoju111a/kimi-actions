@@ -7,6 +7,7 @@ Provides common functionality for all tools:
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
@@ -119,3 +120,22 @@ class BaseTool(ABC):
         footer += "</sub>"
 
         return footer
+
+    # Agent SDK configuration
+    AGENT_MODEL = "kimi-k2-thinking"
+    AGENT_BASE_URL = "https://api.moonshot.cn/v1"
+
+    def setup_agent_env(self) -> Optional[str]:
+        """Setup environment variables for Agent SDK.
+        
+        Returns:
+            API key if available, None otherwise.
+        """
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return None
+        
+        os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = self.AGENT_BASE_URL
+        os.environ["KIMI_MODEL_NAME"] = self.AGENT_MODEL
+        return api_key

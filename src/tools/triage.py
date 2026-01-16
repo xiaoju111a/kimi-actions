@@ -7,7 +7,6 @@ and suggest appropriate labels and priority.
 import asyncio
 import json
 import logging
-import os
 import re
 import tempfile
 import subprocess
@@ -146,14 +145,10 @@ class Triage(BaseTool):
         except ImportError:
             return '{"error": "kimi-agent-sdk not installed"}'
 
-        # Ensure KIMI_API_KEY is set
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        # Setup agent environment
+        api_key = self.setup_agent_env()
         if not api_key:
             return '{"error": "KIMI_API_KEY is required"}'
-
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         # Collect agent output
         text_parts = []
@@ -197,7 +192,7 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it.
         try:
             async with await Session.create(
                 work_dir=work_dir,
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
             ) as session:
@@ -276,7 +271,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
             
             # Clean related_files
             if 'related_files' in data and isinstance(data['related_files'], list):
-                data['related_files'] = [self._clean_tokenization(f) for f in data['related_files'] if isinstance(f, str)]
+                data['related_files'] = [f for f in data['related_files'] if isinstance(f, str)]
             
             logger.info(f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}, files={len(data.get('related_files', []))}")
 
@@ -299,45 +294,6 @@ Be conservative with labels. Only suggest labels you're confident about."""
             logger.debug(f"Response was: {response[:500]}...")
 
         return None
-
-    def _clean_tokenization(self, text: str) -> str:
-        """Clean up tokenization artifacts (extra spaces around punctuation)."""
-        if not text:
-            return text
-        # Remove spaces around common punctuation
-        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)  # space before punctuation
-        text = re.sub(r'([(])\s+', r'\1', text)  # space after opening paren
-        # Fix spaces around slashes in file paths (but not before /commands)
-        text = re.sub(r'(\w)\s+/\s*(\w)', r'\1/\2', text)  # src/ tools -> src/tools
-        text = re.sub(r'/\s+(\w)', r'/\1', text)  # / review -> /review (space after slash)
-        text = re.sub(r'\s+_', '_', text)  # space before underscore
-        text = re.sub(r'_\s+', '_', text)  # space after underscore
-        text = re.sub(r'\s+\.py', '.py', text)  # space before .py
-        text = re.sub(r'\s+\.js', '.js', text)  # space before .js
-        text = re.sub(r'\s+\.ts', '.ts', text)  # space before .ts
-        # Fix spaces around hyphens in compound words
-        text = re.sub(r'(\d+)\s+-\s*(\w)', r'\1-\2', text)  # 30 -second -> 30-second
-        text = re.sub(r'(\d+)\s*-\s+(\w)', r'\1-\2', text)  # 30- second -> 30-second
-        # Fix spaces around + in expressions like "10 + files"
-        text = re.sub(r'(\d+)\s+\+\s+(\w)', r'\1+ \2', text)  # 10 + files -> 10+ files
-        # Fix common tokenization splits (capital letter after space at word start)
-        text = re.sub(r'\bK\s+imi', 'Kimi', text)  # K imi -> Kimi
-        text = re.sub(r'\bk\s+imi', 'kimi', text)  # k imi -> kimi (lowercase)
-        text = re.sub(r'\bA\s+ffects', 'Affects', text)  # A ffects -> Affects
-        text = re.sub(r'\bA\s+PI', 'API', text)  # A PI -> API
-        text = re.sub(r'\bP\s+R', 'PR', text)  # P R -> PR
-        text = re.sub(r'Kim\s+i', 'Kimi', text)  # Kim i -> Kimi
-        text = re.sub(r'PR\s+s\b', 'PRs', text)  # PR s -> PRs
-        text = re.sub(r'API\s+s\b', 'APIs', text)  # API s -> APIs
-        text = re.sub(r'(\w)\s+Client', r'\1Client', text)  # Kimi Client -> KimiClient
-        text = re.sub(r'(\w)\s+Error', r'\1Error', text)  # API Error -> APIError
-        # Fix method calls with space before parenthesis
-        text = re.sub(r'(\w+)\s+\(\s*\)', r'\1()', text)  # .chat () -> .chat()
-        text = re.sub(r'(\w+)\s+\(', r'\1(', text)  # method ( -> method(
-        # Fix "the/command" -> "the /command" (slash commands need space before)
-        text = re.sub(r'(\w)(/)(\w+)\b', r'\1 \2\3', text)  # the/review -> the /review
-        text = re.sub(r'\s{2,}', ' ', text)  # multiple spaces to single
-        return text.strip()
 
     def _format_result(self, result: Dict, applied: bool) -> str:
         """Format the triage result message."""
@@ -374,7 +330,7 @@ Be conservative with labels. Only suggest labels you're confident about."""
 
         summary = result.get("summary", "")
         if summary:
-            lines.append(f"### Summary\n\n{self._clean_tokenization(summary)}\n")
+            lines.append(f"### Summary\n\n{summary}\n")
 
         labels = result.get("labels", [])
         if labels:
@@ -387,14 +343,14 @@ Be conservative with labels. Only suggest labels you're confident about."""
 
         reason = result.get("reason", "")
         if reason:
-            lines.append(f"### Analysis\n\n{self._clean_tokenization(reason)}\n")
+            lines.append(f"### Analysis\n\n{reason}\n")
 
         related_files = result.get("related_files", [])
         if related_files:
             lines.append("<details>")
             lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>\n")
             for f in related_files[:8]:
-                lines.append(f"- `{self._clean_tokenization(f)}`")
+                lines.append(f"- `{f}`")
             lines.append("\n</details>\n")
 
         lines.append(self._get_recommendations(issue_type, priority))

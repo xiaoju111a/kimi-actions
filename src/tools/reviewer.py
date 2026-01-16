@@ -7,8 +7,6 @@ Supports inline comments and incremental review.
 
 import asyncio
 import logging
-import os
-import re
 import subprocess
 import tempfile
 from typing import List, Tuple, Optional
@@ -132,13 +130,9 @@ class Reviewer(BaseTool):
         except ImportError:
             return '```yaml\nsuggestions: []\nsummary: "kimi-agent-sdk not installed"\n```'
 
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return '```yaml\nsuggestions: []\nsummary: "KIMI_API_KEY is required"\n```'
-
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         text_parts = []
         review_prompt = f"""{system_prompt}
@@ -180,7 +174,7 @@ suggestions:
 
         try:
             async with await Session.create(
-                work_dir=work_dir, model="kimi-k2-turbo-preview",
+                work_dir=work_dir, model=self.AGENT_MODEL,
                 yolo=True, max_steps_per_turn=100,
             ) as session:
                 async for msg in session.prompt(review_prompt):
@@ -188,24 +182,10 @@ suggestions:
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
-            return self._clean_tokenization("".join(text_parts))
+            return "".join(text_parts)
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
             return f'```yaml\nsuggestions: []\nsummary: "Error: {str(e)}"\n```'
-
-    def _clean_tokenization(self, text: str) -> str:
-        """Clean up tokenization artifacts."""
-        if not text:
-            return text
-        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
-        text = re.sub(r'([(])\s+', r'\1', text)
-        text = re.sub(r'\s+/', '/', text)
-        text = re.sub(r'/\s+', '/', text)
-        text = re.sub(r'\s+_', '_', text)
-        text = re.sub(r'_\s+', '_', text)
-        text = re.sub(r'\s+\.py', '.py', text)
-        text = re.sub(r'\s{2,}', ' ', text)
-        return text.strip()
 
     def _get_incremental_diff(
         self, repo_name: str, pr_number: int
@@ -236,7 +216,7 @@ suggestions:
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
-        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-turbo-preview`</sub>"
+        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-thinking`</sub>"
         skipped = []
 
         for s in suggestions:
@@ -286,13 +266,13 @@ suggestions:
             elif "```" in response:
                 yaml_content = response.split("```")[1].split("```")[0]
             data = yaml.safe_load(yaml_content)
-            summary = self._clean_tokenization(data.get("summary", "").strip())
+            summary = data.get("summary", "").strip()
             file_summaries = {}
             for fs in data.get("file_summaries", []):
                 f = fs.get("file", "")
                 desc = fs.get("description", "")
                 if f and desc:
-                    file_summaries[f] = self._clean_tokenization(desc)
+                    file_summaries[f] = desc
         except Exception:
             summary = ""
             file_summaries = {}
@@ -333,8 +313,8 @@ suggestions:
             sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
             for s in suggestions[:5]:
                 icon = sev_icons.get(s.severity.value, "⚪")
-                file_name = self._clean_tokenization(s.relevant_file or "unknown")
-                issue_summary = self._clean_tokenization((s.one_sentence_summary or "").replace("\n", " ").strip())
+                file_name = s.relevant_file or "unknown"
+                issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
                 lines.append(f"- {icon} `{file_name}`: {issue_summary}")
             if len(suggestions) > 5:
                 lines.append(f"- ... and {len(suggestions) - 5} more")
@@ -429,12 +409,12 @@ suggestions:
                 severity = SeverityLevel(severity_str) if severity_str in ["critical", "high", "medium", "low"] else SeverityLevel.MEDIUM
                 suggestions.append(CodeSuggestion(
                     id=str(uuid.uuid4())[:8],
-                    relevant_file=self._clean_tokenization(s.get("relevant_file", "")),
+                    relevant_file=s.get("relevant_file", ""),
                     language=s.get("language", ""),
-                    suggestion_content=self._clean_tokenization(s.get("suggestion_content", "")),
+                    suggestion_content=s.get("suggestion_content", ""),
                     existing_code=s.get("existing_code", ""),
                     improved_code=s.get("improved_code", ""),
-                    one_sentence_summary=self._clean_tokenization(s.get("one_sentence_summary", "")),
+                    one_sentence_summary=s.get("one_sentence_summary", ""),
                     relevant_lines_start=s.get("relevant_lines_start", 0),
                     relevant_lines_end=s.get("relevant_lines_end", 0),
                     label=s.get("label", "bug"),
@@ -464,7 +444,7 @@ suggestions:
             return self._format_fallback(response, current_sha)
 
         lines = []
-        summary = self._clean_tokenization(data.get("summary", "").strip())
+        summary = data.get("summary", "").strip()
         lines.append("### Pull request overview")
         if summary:
             lines.append(f"{summary}\n")
@@ -533,7 +513,7 @@ suggestions:
                 yaml_content = response.split("```")[1].split("```")[0]
             
             data = yaml.safe_load(yaml_content)
-            summary = self._clean_tokenization(data.get("summary", "").strip())
+            summary = data.get("summary", "").strip()
             score = data.get("score", "N/A")
             
             lines = ["## 🌗 Kimi Code Review\n"]
@@ -547,7 +527,7 @@ suggestions:
                 lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
             return "\n".join(lines)
         except Exception:
-            result = f"## 🌗 Kimi Code Review\n\n{self._clean_tokenization(response)}\n\n{self.format_footer()}"
+            result = f"## 🌗 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
             if current_sha:
                 result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
             return result

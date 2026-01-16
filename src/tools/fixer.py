@@ -76,14 +76,11 @@ class Fixer(BaseTool):
             return "❌ kimi-agent-sdk not installed. This feature requires the agent-fix branch."
 
         # Ensure KIMI_API_KEY is set for agent-sdk
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return "❌ KIMI_API_KEY is required for /fix command"
         
         # Set environment variables for agent-sdk (kimi-cli)
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         # Track agent output - collect text parts and build complete messages
         text_parts = []  # Collect text fragments
@@ -110,7 +107,7 @@ Be efficient. Make the fix quickly and stop.
         try:
             async with await Session.create(
                 work_dir=work_dir,
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,  # Auto-approve tool calls
                 max_steps_per_turn=100,
             ) as session:
@@ -389,14 +386,11 @@ Closes #{issue_number}
             return "❌ kimi-agent-sdk not installed. This feature requires the agent-fix branch."
 
         # Ensure KIMI_API_KEY is set for agent-sdk
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return "❌ KIMI_API_KEY is required for /fixup command"
         
         # Set environment variables for agent-sdk (kimi-cli)
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         # Track agent output
         text_parts = []
@@ -445,7 +439,7 @@ After completing, provide a brief summary of what you changed.
         try:
             async with await Session.create(
                 work_dir=work_dir,
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
             ) as session:

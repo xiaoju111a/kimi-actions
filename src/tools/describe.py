@@ -2,8 +2,7 @@
 
 import asyncio
 import logging
-import os
-import re
+
 import yaml
 from typing import List, Tuple
 
@@ -66,13 +65,10 @@ class Describe(BaseTool):
         except ImportError:
             return f'```yaml\ntitle: "{pr_title}"\ndescription: "kimi-agent-sdk not installed"\n```'
 
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return f'```yaml\ntitle: "{pr_title}"\ndescription: "KIMI_API_KEY required"\n```'
 
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         text_parts = []
         describe_prompt = f"""{skill_instructions}
@@ -107,7 +103,7 @@ files:
         try:
             async with await Session.create(
                 work_dir="/tmp",
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
             ) as session:
@@ -116,24 +112,10 @@ files:
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
-            return self._clean_tokenization("".join(text_parts))
+            return "".join(text_parts)
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
             return f'```yaml\ntitle: "{pr_title}"\ndescription: "Error: {str(e)}"\n```'
-
-    def _clean_tokenization(self, text: str) -> str:
-        """Clean up tokenization artifacts."""
-        if not text:
-            return text
-        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
-        text = re.sub(r'([(])\s+', r'\1', text)
-        text = re.sub(r'\s+/', '/', text)
-        text = re.sub(r'/\s+', '/', text)
-        text = re.sub(r'\s+_', '_', text)
-        text = re.sub(r'_\s+', '_', text)
-        text = re.sub(r'\s+\.py', '.py', text)
-        text = re.sub(r'\s{2,}', ' ', text)
-        return text.strip()
 
     def _parse_response(self, response: str, default_title: str) -> Tuple[str, str, List[str]]:
         """Parse YAML response."""
@@ -146,10 +128,10 @@ files:
 
             data = yaml.safe_load(yaml_content)
 
-            title = self._clean_tokenization(data.get("title", default_title).strip())
+            title = data.get("title", default_title).strip()
             pr_type = data.get("type", "")
             labels = data.get("labels", [])
-            description = self._clean_tokenization(data.get("description", "").strip())
+            description = data.get("description", "").strip()
             files = data.get("files", [])
 
             body_parts = []
@@ -166,8 +148,8 @@ files:
                 change_icons = {"added": "➕", "modified": "📝", "deleted": "🗑️", "renamed": "📛"}
                 for f in files:
                     icon = change_icons.get(f.get("change_type", ""), "📄")
-                    filename = self._clean_tokenization(f.get('filename', ''))
-                    summary = self._clean_tokenization(f.get('summary', ''))
+                    filename = f.get('filename', '')
+                    summary = f.get('summary', '')
                     body_parts.append(f"| `{filename}` | {icon} | {summary} |")
                 body_parts.append("")
 
@@ -175,7 +157,7 @@ files:
             return title, "\n".join(body_parts), labels
 
         except Exception:
-            return default_title, self._clean_tokenization(response), []
+            return default_title, response, []
 
     def generate_comment(self, repo_name: str, pr_number: int) -> str:
         """Generate description as a comment."""

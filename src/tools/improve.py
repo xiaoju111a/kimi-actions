@@ -2,8 +2,7 @@
 
 import asyncio
 import logging
-import os
-import re
+
 import subprocess
 import tempfile
 import yaml
@@ -86,13 +85,10 @@ class Improve(BaseTool):
         except ImportError:
             return '{"suggestions": []}'
 
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return '{"suggestions": []}'
 
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         text_parts = []
 
@@ -126,7 +122,7 @@ suggestions:
         try:
             async with await Session.create(
                 work_dir=work_dir,
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
             ) as session:
@@ -161,7 +157,7 @@ suggestions:
 
         except Exception:
             # Clean and return raw response
-            cleaned = self._clean_tokenization(response)
+            cleaned = response
             return f"## 🌗 Kimi Code Suggestions\n\n{cleaned}\n\n{self.format_footer()}"
 
     def _format_structured(self, suggestions: List[dict]) -> str:
@@ -176,14 +172,14 @@ suggestions:
         lines.append("| # | File | Severity |\n|---|------|----------|")
         for i, s in enumerate(suggestions, 1):
             sev = s.get("severity", "medium")
-            file_name = self._clean_tokenization(s.get('relevant_file', ''))
+            file_name = s.get('relevant_file', '')
             lines.append(f"| {i} | `{file_name}` | {severity_icons.get(sev, '⚪')} {sev} |")
 
         lines.append("\n---\n")
 
         for i, s in enumerate(suggestions, 1):
-            summary = self._clean_tokenization(s.get("one_sentence_summary", ""))
-            content = self._clean_tokenization(s.get("suggestion_content", "").strip())
+            summary = s.get("one_sentence_summary", "")
+            content = s.get("suggestion_content", "").strip()
             existing = s.get("existing_code", "").strip()
             improved = s.get("improved_code", "").strip()
             language = s.get("language", "")
@@ -200,17 +196,3 @@ suggestions:
 
         lines.append(self.format_footer(f"{len(suggestions)} suggestions"))
         return "\n".join(lines)
-
-    def _clean_tokenization(self, text: str) -> str:
-        """Clean up tokenization artifacts."""
-        if not text:
-            return text
-        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
-        text = re.sub(r'([(])\s+', r'\1', text)
-        text = re.sub(r'\s+/', '/', text)
-        text = re.sub(r'/\s+', '/', text)
-        text = re.sub(r'\s+_', '_', text)
-        text = re.sub(r'_\s+', '_', text)
-        text = re.sub(r'\s+\.py', '.py', text)
-        text = re.sub(r'\s{2,}', ' ', text)
-        return text.strip()

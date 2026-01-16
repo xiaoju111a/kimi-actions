@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-import os
+
 import subprocess
 import tempfile
 
@@ -102,13 +102,10 @@ class Ask(BaseTool):
         except ImportError:
             return "kimi-agent-sdk not installed."
 
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return "KIMI_API_KEY is required."
 
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         text_parts = []
 
@@ -134,7 +131,7 @@ Be concise and helpful.
         try:
             async with await Session.create(
                 work_dir=work_dir,
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
             ) as session:
@@ -153,7 +150,7 @@ Be concise and helpful.
     def _format_response(self, response: str, inline: bool) -> str:
         """Format the response."""
         # Clean tokenization artifacts
-        response = self._clean_tokenization(response)
+        response = response
 
         if inline:
             return f"""## 🌗 Kimi Answer
@@ -169,18 +166,3 @@ Be concise and helpful.
 
 {self.format_footer("Use `/ask <question>` to continue asking")}
 """
-
-    def _clean_tokenization(self, text: str) -> str:
-        """Clean up tokenization artifacts."""
-        import re
-        if not text:
-            return text
-        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
-        text = re.sub(r'([(])\s+', r'\1', text)
-        text = re.sub(r'\s+/', '/', text)
-        text = re.sub(r'/\s+', '/', text)
-        text = re.sub(r'\s+_', '_', text)
-        text = re.sub(r'_\s+', '_', text)
-        text = re.sub(r'\s+\.py', '.py', text)
-        text = re.sub(r'\s{2,}', ' ', text)
-        return text.strip()

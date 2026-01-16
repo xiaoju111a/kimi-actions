@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-import os
+
 import re
 from typing import List
 
@@ -71,13 +71,10 @@ class Labels(BaseTool):
         except ImportError:
             return '{"labels": [], "reason": "kimi-agent-sdk not installed"}'
 
-        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        api_key = self.setup_agent_env()
         if not api_key:
             return '{"labels": [], "reason": "KIMI_API_KEY required"}'
 
-        os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
-        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
 
         text_parts = []
         labels_prompt = f"""{skill_instructions}
@@ -106,7 +103,7 @@ Rules:
         try:
             async with await Session.create(
                 work_dir="/tmp",
-                model="kimi-k2-turbo-preview",
+                model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
             ) as session:
