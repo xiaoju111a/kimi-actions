@@ -111,7 +111,8 @@ class Triage(BaseTool):
                     return f"## 🌗 Kimi Triage\n\n❌ Failed to analyze this issue.\n\n**Agent Response:**\n{result[:500]}\n\n{self.format_footer()}"
 
                 # Check if we got meaningful data
-                if triage_result.get("type") == "unknown" or not triage_result.get("type"):
+                issue_type = triage_result.get("type", "").strip().lower()
+                if not issue_type or issue_type == "unknown":
                     logger.warning(f"Triage returned incomplete data: {triage_result}")
                     return f"## 🌗 Kimi Triage\n\n⚠️ Could not fully analyze this issue.\n\n**Partial Result:**\n{triage_result}\n\n**Agent Response:**\n{result[:300]}\n\n{self.format_footer()}"
 
@@ -254,18 +255,30 @@ Be conservative with labels. Only suggest labels you're confident about."""
                     logger.warning("No JSON found in response")
                     return None
 
+            # Clean up tokenization artifacts (spaces around values)
+            # Agent sometimes outputs: " bug " instead of "bug"
+            json_str = re.sub(r'"\s+', '"', json_str)  # Remove space after opening quote
+            json_str = re.sub(r'\s+"', '"', json_str)  # Remove space before closing quote
+
             data = json.loads(json_str)
+            
+            # Strip whitespace from string values
+            for key in ['type', 'priority', 'confidence', 'summary', 'reason']:
+                if key in data and isinstance(data[key], str):
+                    data[key] = data[key].strip()
+            
             logger.info(f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}")
 
             # Validate and filter labels
             suggested_labels = data.get("labels", [])
             valid = []
 
-            valid_labels_lower = {v.lower(): v for v in valid_labels}
+            valid_labels_lower = {v.lower().strip(): v for v in valid_labels}
             for label in suggested_labels:
-                label_lower = label.lower()
-                if label_lower in valid_labels_lower:
-                    valid.append(valid_labels_lower[label_lower])
+                if isinstance(label, str):
+                    label_clean = label.lower().strip()
+                    if label_clean in valid_labels_lower:
+                        valid.append(valid_labels_lower[label_clean])
 
             data["labels"] = valid[:4]
             return data
