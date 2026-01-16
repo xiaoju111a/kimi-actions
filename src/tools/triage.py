@@ -243,20 +243,27 @@ Be conservative with labels. Only suggest labels you're confident about."""
                 json_str = json_match.group(1)
                 logger.debug("Found JSON in markdown code block")
             else:
-                # Try to find JSON object with "type" key
-                json_match = re.search(r'\{[^{}]*"type"[^{}]*\}', response, re.DOTALL)
-                if not json_match:
-                    # Last resort: any JSON object
-                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    logger.debug(f"Found JSON without code block: {json_str[:100]}...")
+                # Try to find complete JSON object (handles nested arrays/objects)
+                # Find the first { and match to the corresponding }
+                start_idx = response.find('{')
+                if start_idx != -1:
+                    depth = 0
+                    end_idx = start_idx
+                    for i, char in enumerate(response[start_idx:], start_idx):
+                        if char == '{':
+                            depth += 1
+                        elif char == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end_idx = i
+                                break
+                    json_str = response[start_idx:end_idx + 1]
+                    logger.debug(f"Found JSON object: {json_str[:100]}...")
                 else:
                     logger.warning("No JSON found in response")
                     return None
 
             # Clean up tokenization artifacts (spaces around values)
-            # Agent sometimes outputs: " bug " instead of "bug"
             json_str = re.sub(r'"\s+', '"', json_str)  # Remove space after opening quote
             json_str = re.sub(r'\s+"', '"', json_str)  # Remove space before closing quote
 
@@ -267,7 +274,11 @@ Be conservative with labels. Only suggest labels you're confident about."""
                 if key in data and isinstance(data[key], str):
                     data[key] = data[key].strip()
             
-            logger.info(f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}")
+            # Clean related_files
+            if 'related_files' in data and isinstance(data['related_files'], list):
+                data['related_files'] = [self._clean_tokenization(f) for f in data['related_files'] if isinstance(f, str)]
+            
+            logger.info(f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}, files={len(data.get('related_files', []))}")
 
             # Validate and filter labels
             suggested_labels = data.get("labels", [])
@@ -303,7 +314,14 @@ Be conservative with labels. Only suggest labels you're confident about."""
         text = re.sub(r'\s+\.py', '.py', text)  # space before .py
         text = re.sub(r'\s+\.js', '.js', text)  # space before .js
         text = re.sub(r'\s+\.ts', '.ts', text)  # space before .ts
-        # Fix common tokenization splits
+        # Fix spaces around hyphens in compound words
+        text = re.sub(r'(\d+)\s+-\s*(\w)', r'\1-\2', text)  # 30 -second -> 30-second
+        text = re.sub(r'(\d+)\s*-\s+(\w)', r'\1-\2', text)  # 30- second -> 30-second
+        # Fix common tokenization splits (capital letter after space at word start)
+        text = re.sub(r'\bK\s+imi', 'Kimi', text)  # K imi -> Kimi
+        text = re.sub(r'\bA\s+ffects', 'Affects', text)  # A ffects -> Affects
+        text = re.sub(r'\bA\s+PI', 'API', text)  # A PI -> API
+        text = re.sub(r'\bP\s+R', 'PR', text)  # P R -> PR
         text = re.sub(r'Kim\s+i', 'Kimi', text)  # Kim i -> Kimi
         text = re.sub(r'PR\s+s\b', 'PRs', text)  # PR s -> PRs
         text = re.sub(r'API\s+s\b', 'APIs', text)  # API s -> APIs
