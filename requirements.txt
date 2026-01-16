@@ -1,4 +1,3 @@
-kimi-sdk @ git+https://github.com/MoonshotAI/kimi-cli.git#subdirectory=sdks/kimi-sdk
 kimi-agent-sdk @ git+https://github.com/MoonshotAI/kimi-agent-sdk.git#subdirectory=python
 PyGithub>=2.1.0
 PyYAML>=6.0

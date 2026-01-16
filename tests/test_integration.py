@@ -69,49 +69,6 @@ new file mode 100644
         self.reactions.append(reaction)
 
 
-class MockKimiClient:
-    """Mock Kimi client."""
-    def __init__(self, api_key: str = "test", model: str = "kimi-k2-turbo-preview"):
-        self._model = model
-
-    @property
-    def model(self):
-        return self._model
-
-    @model.setter
-    def model(self, value):
-        self._model = value
-
-    def chat(self, messages: list, **kwargs) -> str:
-        """Return mock review response."""
-        return """```yaml
-summary: Code adds JWT authentication with some security concerns.
-score: 72
-estimated_effort: 2
-suggestions:
-  - relevant_file: src/auth.py
-    language: python
-    one_sentence_summary: Hardcoded secret key is a security risk
-    suggestion_content: The JWT secret should be loaded from environment variables, not hardcoded.
-    existing_code: 'token = jwt.encode({"user_id": user_id}, "secret")'
-    improved_code: 'token = jwt.encode({"user_id": user_id}, os.environ["JWT_SECRET"])'
-    relevant_lines_start: 6
-    relevant_lines_end: 6
-    label: security
-    severity: critical
-  - relevant_file: src/auth.py
-    language: python
-    one_sentence_summary: Bare except clause catches all exceptions
-    suggestion_content: Use specific exception types instead of bare except.
-    existing_code: "except:"
-    improved_code: "except jwt.InvalidTokenError:"
-    relevant_lines_start: 13
-    relevant_lines_end: 13
-    label: bug
-    severity: medium
-```"""
-
-
 @pytest.fixture
 def mock_action_config():
     """Create mock action config."""
@@ -146,10 +103,9 @@ class TestReviewerIntegration:
         """Test that reviewer generates proper output."""
         from tools.reviewer import Reviewer
 
-        kimi = MockKimiClient()
         github = MockGitHubClient()
 
-        reviewer = Reviewer(kimi, github)
+        reviewer = Reviewer(github)
 
         # Mock load_context to avoid GitHub API calls
         reviewer.load_context = Mock()
@@ -188,11 +144,10 @@ suggestions:
         """Test reviewer handles empty diff gracefully."""
         from tools.reviewer import Reviewer
 
-        kimi = MockKimiClient()
         github = MockGitHubClient()
         github.get_pr_diff = Mock(return_value="")
 
-        reviewer = Reviewer(kimi, github)
+        reviewer = Reviewer(github)
         reviewer.load_context = Mock()
         reviewer.skill_manager = Mock()
         reviewer.skill_manager.get_skill = Mock(return_value=Mock(
@@ -212,10 +167,9 @@ class TestDescribeIntegration:
         """Test that describe generates title and body."""
         from tools.describe import Describe
 
-        kimi = MockKimiClient()
         github = MockGitHubClient()
 
-        describe = Describe(kimi, github)
+        describe = Describe(github)
         describe.load_context = Mock()
         describe.repo_config = None
         describe.skill_manager = Mock()
@@ -250,10 +204,9 @@ class TestImproveIntegration:
         """Test that improve generates suggestions."""
         from tools.improve import Improve
 
-        kimi = MockKimiClient()
         github = MockGitHubClient()
 
-        improve = Improve(kimi, github)
+        improve = Improve(github)
         improve.load_context = Mock()
         improve.repo_config = None
         improve.skill_manager = Mock()
@@ -288,10 +241,9 @@ class TestAskIntegration:
         """Test that ask answers questions."""
         from tools.ask import Ask
 
-        kimi = MockKimiClient()
         github = MockGitHubClient()
 
-        ask = Ask(kimi, github)
+        ask = Ask(github)
         ask.load_context = Mock()
         ask.repo_config = None
         ask.skill_manager = Mock()
@@ -313,48 +265,10 @@ class TestAskIntegration:
         """Test that ask requires a question."""
         from tools.ask import Ask
 
-        kimi = MockKimiClient()
         github = MockGitHubClient()
 
-        ask = Ask(kimi, github)
+        ask = Ask(github)
 
         result = ask.run("owner/repo", 42)
 
         assert "Please provide a question" in result
-
-
-class TestKimiClientIntegration:
-    """Integration tests for Kimi client."""
-
-    def test_retry_on_rate_limit(self):
-        """Test that client retries on rate limit."""
-        from kimi_client import KimiClient
-
-        with patch('kimi_client.Kimi') as mock_kimi_class, \
-             patch('kimi_client.generate') as mock_generate:
-            mock_kimi = Mock()
-            mock_kimi_class.return_value = mock_kimi
-
-            # First call fails with rate limit, second succeeds
-            mock_message = Mock()
-            mock_message.extract_text.return_value = "Success"
-            mock_result = Mock()
-            mock_result.message = mock_message
-            mock_result.usage = Mock(input=10, output=5)
-
-            call_count = [0]
-            async def side_effect(*args, **kwargs):
-                call_count[0] += 1
-                if call_count[0] == 1:
-                    raise Exception("429 rate limit exceeded")
-                return mock_result
-
-            mock_generate.side_effect = side_effect
-
-            client = KimiClient("test-key")
-
-            with patch('time.sleep'):  # Skip actual sleep
-                result = client.chat([{"role": "user", "content": "test"}])
-
-            assert result == "Success"
-            assert call_count[0] == 2  # Retried once

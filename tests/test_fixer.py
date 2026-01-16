@@ -1,7 +1,7 @@
 """Tests for Fixer tool."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import sys
 import os
 
@@ -21,9 +21,8 @@ class TestFixer:
         """Test Fixer skill name."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         assert fixer.skill_name == "issue-fix"
 
@@ -31,9 +30,8 @@ class TestFixer:
         """Test _format_no_changes output."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         result = fixer._format_no_changes(
             agent_summary="Analyzed the code. No bug found.",
@@ -48,9 +46,8 @@ class TestFixer:
         """Test _format_success output."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         result = fixer._format_success(
             pr_number=123,
@@ -68,9 +65,8 @@ class TestFixer:
         """Test _format_pr_body output."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         result = fixer._format_pr_body(
             issue_number=42,
@@ -89,7 +85,6 @@ class TestFixer:
         """Test run handles clone failure."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
         
         # Mock issue
@@ -101,7 +96,7 @@ class TestFixer:
         # Mock clone failure
         mock_subprocess.run.side_effect = Exception("Clone failed")
         
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         result = fixer.run("test/repo", 1)
         
         assert "Failed to fix issue" in result
@@ -110,7 +105,6 @@ class TestFixer:
         """Test run returns error when agent-sdk not installed."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
         
         # Mock issue
@@ -119,7 +113,7 @@ class TestFixer:
         mock_issue.body = "Test body"
         mock_github.get_issue.return_value = mock_issue
         
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         # Mock subprocess to succeed for clone
         with patch('tools.fixer.subprocess') as mock_subprocess:
@@ -154,9 +148,8 @@ class TestFixerUpdate:
         """Test _format_no_update output."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         result = fixer._format_no_update(
             agent_summary="No changes needed based on feedback.",
@@ -171,9 +164,8 @@ class TestFixerUpdate:
         """Test _format_update_success output."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         result = fixer._format_update_success(
             pr_number=123,
@@ -190,9 +182,8 @@ class TestFixerUpdate:
         """Test _build_agent_summary extracts explicit summary."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         final_summary = """
 ---SUMMARY---
@@ -210,9 +201,8 @@ class TestFixerUpdate:
         """Test _build_agent_summary fallback when no explicit summary."""
         from tools.fixer import Fixer
         
-        mock_kimi = Mock()
         mock_github = Mock()
-        fixer = Fixer(mock_kimi, mock_github)
+        fixer = Fixer(mock_github)
         
         text_parts = ["Analyzing code.", "Found the issue.", "Fixed it."]
         result = fixer._build_agent_summary(text_parts, [], "")

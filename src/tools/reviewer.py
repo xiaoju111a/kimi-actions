@@ -1,17 +1,21 @@
 """Code review tool for Kimi Actions.
 
-Uses Skill-based architecture with script support.
+Uses Agent SDK with Skill-based architecture.
 Supports intelligent chunking and fallback models for large PRs.
 Supports inline comments and incremental review.
 """
 
+import asyncio
 import logging
+import os
+import re
+import subprocess
+import tempfile
 from typing import List, Tuple, Optional
 import yaml
 import uuid
 
 from tools.base import BaseTool
-from kimi_client import KimiAPIError
 from token_handler import DiffChunk
 from models import CodeSuggestion, SeverityLevel, ReviewOptions, SuggestionControl
 from suggestion_service import SuggestionService
@@ -20,31 +24,21 @@ logger = logging.getLogger(__name__)
 
 
 class Reviewer(BaseTool):
-    """Code review tool using Skill-based architecture."""
+    """Code review tool using Agent SDK with Skill-based architecture."""
 
     @property
     def skill_name(self) -> str:
         return "code-review"
 
     def run(self, repo_name: str, pr_number: int, **kwargs) -> str:
-        """Run code review on a PR.
-
-        Args:
-            incremental: Only review new commits since last review
-            inline: Post inline comments (default: True)
-            command_quote: Original command string to quote in output
-        """
+        """Run code review on a PR."""
         incremental = kwargs.get("incremental", False)
-        inline = kwargs.get("inline", True)  # Default to inline comments
+        inline = kwargs.get("inline", True)
         command_quote = kwargs.get("command_quote", "")
 
-        # Get PR info
         pr = self.github.get_pr(repo_name, pr_number)
-
-        # Load context (config + custom skills)
         self.load_context(repo_name, ref=pr.head.sha)
 
-        # Get diff (incremental or full)
         if incremental:
             compressed_diff, included_chunks, excluded_chunks, last_sha = self._get_incremental_diff(
                 repo_name, pr_number
@@ -57,40 +51,44 @@ class Reviewer(BaseTool):
         if not compressed_diff:
             return "No changes to review."
 
-        # Get skill (respects overrides)
         skill = self.get_skill()
         if not skill:
             return f"Error: {self.skill_name} skill not found."
 
-        # Run scripts if available
         script_output = self._run_scripts(skill, compressed_diff)
-
-        # Build system prompt
         system_prompt = self._build_system_prompt(skill, script_output, compressed_diff)
 
-        # Build user prompt
-        user_prompt = f"""## PR Information
-Title: {pr.title}
-Branch: {pr.head.ref} -> {pr.base.ref}
+        with tempfile.TemporaryDirectory() as work_dir:
+            try:
+                clone_url = f"https://github.com/{repo_name}.git"
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", "-b", pr.head.ref, clone_url, work_dir],
+                    check=True, capture_output=True
+                )
+                response = asyncio.run(self._run_agent_review(
+                    work_dir=work_dir, system_prompt=system_prompt,
+                    pr_title=pr.title, pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
+                    diff=compressed_diff
+                ))
+            except subprocess.CalledProcessError:
+                try:
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", clone_url, work_dir],
+                        check=True, capture_output=True
+                    )
+                    response = asyncio.run(self._run_agent_review(
+                        work_dir=work_dir, system_prompt=system_prompt,
+                        pr_title=pr.title, pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
+                        diff=compressed_diff
+                    ))
+                except Exception as e:
+                    logger.error(f"Review failed: {e}")
+                    return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
+            except Exception as e:
+                logger.error(f"Review failed: {e}")
+                return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
 
-## Code Changes
-```diff
-{compressed_diff}
-```
-
-Please output review results in YAML format."""
-
-        # Call Kimi
-        try:
-            response = self.call_kimi(system_prompt, user_prompt)
-        except KimiAPIError as e:
-            logger.error(f"Kimi API error: {e}")
-            return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
-
-        # Parse and filter suggestions
         suggestions = self._parse_suggestions(response)
-        
-        # Always try to format the review, even with no suggestions
         review_options = ReviewOptions(
             bug=self.repo_config.enable_bug if self.repo_config else True,
             performance=self.repo_config.enable_performance if self.repo_config else True,
@@ -103,74 +101,133 @@ Please output review results in YAML format."""
         filtered, discarded = suggestion_service.process_suggestions(
             suggestions, review_options, compressed_diff
         )
-        
-        logger.info(f"Suggestions: {len(suggestions)} parsed, {len(filtered)} filtered, {len(discarded)} discarded")
+        logger.info(f"Suggestions: {len(suggestions)} parsed, {len(filtered)} filtered")
 
-        # Calculate total files reviewed
         total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
-
-        # Post inline comments with summary as review body
         posted_count = 0
         if inline and filtered:
-            logger.info(f"Attempting to post {len(filtered)} inline comments")
-            # Format summary first (with expected count)
             summary = self._format_inline_summary(
-                response, filtered, len(filtered),
-                total_files=total_files,
-                included_chunks=included_chunks,
-                incremental=incremental, current_sha=pr.head.sha,
-                command_quote=command_quote
+                response, filtered, len(filtered), total_files=total_files,
+                included_chunks=included_chunks, incremental=incremental,
+                current_sha=pr.head.sha, command_quote=command_quote
             )
             posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
             if posted_count > 0:
-                return ""  # Already posted with summary, return empty to avoid duplicate
-            logger.warning("Inline comments failed, falling back to regular comment")
-        else:
-            logger.info(f"Skipping inline comments: inline={inline}, filtered={len(filtered)}")
-        
-        # Fallback: format summary with actual posted count (0 if failed or no suggestions)
+                return ""
+
         summary = self._format_inline_summary(
-            response, filtered, posted_count,
-            total_files=total_files,
-            included_chunks=included_chunks,
-            incremental=incremental, current_sha=pr.head.sha,
-            command_quote=command_quote
+            response, filtered, posted_count, total_files=total_files,
+            included_chunks=included_chunks, incremental=incremental,
+            current_sha=pr.head.sha, command_quote=command_quote
         )
-        
-        # Return summary for main.py to post as regular comment
         return summary
+
+
+    async def _run_agent_review(
+        self, work_dir: str, system_prompt: str, pr_title: str, pr_branch: str, diff: str
+    ) -> str:
+        """Run agent to perform code review."""
+        try:
+            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+        except ImportError:
+            return '```yaml\nsuggestions: []\nsummary: "kimi-agent-sdk not installed"\n```'
+
+        api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
+        if not api_key:
+            return '```yaml\nsuggestions: []\nsummary: "KIMI_API_KEY is required"\n```'
+
+        os.environ["KIMI_API_KEY"] = api_key
+        os.environ["KIMI_BASE_URL"] = "https://api.moonshot.cn/v1"
+        os.environ["KIMI_MODEL_NAME"] = "kimi-k2-turbo-preview"
+
+        text_parts = []
+        review_prompt = f"""{system_prompt}
+
+## PR Information
+Title: {pr_title}
+Branch: {pr_branch}
+
+## Code Changes
+```diff
+{diff[:15000]}
+```
+
+## Instructions
+1. Analyze the code changes carefully
+2. If needed, read related files to understand context
+3. Identify bugs, security issues, and improvements
+
+Please output review results in YAML format:
+```yaml
+summary: "Brief summary of the PR"
+score: 85
+file_summaries:
+  - file: "path/to/file.py"
+    description: "What changed in this file"
+suggestions:
+  - relevant_file: "path/to/file.py"
+    language: "python"
+    severity: "medium"
+    label: "bug"
+    one_sentence_summary: "Brief issue description"
+    suggestion_content: "Detailed explanation"
+    existing_code: "problematic code"
+    improved_code: "fixed code"
+    relevant_lines_start: 10
+    relevant_lines_end: 15
+```
+"""
+
+        try:
+            async with await Session.create(
+                work_dir=work_dir, model="kimi-k2-turbo-preview",
+                yolo=True, max_steps_per_turn=100,
+            ) as session:
+                async for msg in session.prompt(review_prompt):
+                    if isinstance(msg, TextPart):
+                        text_parts.append(msg.text)
+                    elif isinstance(msg, ApprovalRequest):
+                        msg.resolve("approve")
+            return self._clean_tokenization("".join(text_parts))
+        except Exception as e:
+            logger.error(f"Agent execution failed: {e}")
+            return f'```yaml\nsuggestions: []\nsummary: "Error: {str(e)}"\n```'
+
+    def _clean_tokenization(self, text: str) -> str:
+        """Clean up tokenization artifacts."""
+        if not text:
+            return text
+        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
+        text = re.sub(r'([(])\s+', r'\1', text)
+        text = re.sub(r'\s+/', '/', text)
+        text = re.sub(r'/\s+', '/', text)
+        text = re.sub(r'\s+_', '_', text)
+        text = re.sub(r'_\s+', '_', text)
+        text = re.sub(r'\s+\.py', '.py', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.strip()
 
     def _get_incremental_diff(
         self, repo_name: str, pr_number: int
     ) -> Tuple[Optional[str], List[DiffChunk], List[DiffChunk], Optional[str]]:
         """Get diff only for new commits since last review."""
-        # Find last review comment
         last_review = self.github.get_last_bot_comment(repo_name, pr_number)
-
         if not last_review:
-            # No previous review, do full review
             diff, included, excluded = self.get_diff(repo_name, pr_number)
             return diff, included, excluded, None
 
         last_sha = last_review["sha"]
-
-        # Get new commits
         new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
-
         if not new_commits:
             return None, [], [], last_sha
 
-        # Get diff for new commits
         commit_shas = [c.sha for c in new_commits]
         diff = self.github.get_diff_for_commits(repo_name, commit_shas)
-
         if not diff:
             return None, [], [], last_sha
 
-        # Process through chunker
         included, excluded = self.chunker.chunk_diff(diff, max_files=self.config.max_files)
         compressed = self.chunker.build_diff_string(included)
-
         return compressed, included, excluded, last_sha
 
     def _post_inline_comments(
@@ -179,7 +236,7 @@ Please output review results in YAML format."""
     ):
         """Post inline comments with GitHub native suggestion format."""
         comments = []
-        footer = f"\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `{self.kimi.model}`</sub>"
+        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-turbo-preview`</sub>"
         skipped = []
 
         for s in suggestions:
@@ -187,63 +244,39 @@ Please output review results in YAML format."""
                 skipped.append(f"Missing file/line: {s.relevant_file}:{s.relevant_lines_start}")
                 continue
 
-            # Build comment body with description
             body = f"{s.suggestion_content}"
-
-            # Use GitHub's native suggestion syntax for code changes
             if s.improved_code:
                 body += f"\n\n```suggestion\n{s.improved_code.strip()}\n```"
-            
-            # Add footer to each inline comment
             body += footer
 
             comment = {
                 "path": s.relevant_file,
                 "line": s.relevant_lines_end if s.relevant_lines_end else s.relevant_lines_start,
-                "body": body,
-                "side": "RIGHT"
+                "body": body, "side": "RIGHT"
             }
-            
-            # Add start_line for multi-line suggestions
             if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
                 comment["start_line"] = s.relevant_lines_start
-            
             comments.append(comment)
-            logger.debug(f"Prepared comment for {s.relevant_file}:{s.relevant_lines_start}-{s.relevant_lines_end}")
 
         if skipped:
             logger.warning(f"Skipped {len(skipped)} suggestions: {skipped}")
 
         if comments:
             try:
-                logger.info(f"Posting {len(comments)} inline comments to {repo_name}#{pr_number}")
                 self.github.create_review_with_comments(
-                    repo_name, pr_number, comments,
-                    body=summary_body,  # Summary as review body
-                    event="COMMENT"
+                    repo_name, pr_number, comments, body=summary_body, event="COMMENT"
                 )
-                logger.info(f"Successfully posted {len(comments)} inline comments")
                 return len(comments)
             except Exception as e:
                 logger.error(f"Failed to post inline comments: {e}")
-                # Log the first comment for debugging
-                if comments:
-                    logger.error(f"First comment was for: {comments[0].get('path')}:{comments[0].get('line')}")
                 return 0
-        else:
-            logger.warning(f"No valid comments to post (suggestions: {len(suggestions)}, skipped: {len(skipped)})")
         return 0
 
+
     def _format_inline_summary(
-        self,
-        response: str,
-        suggestions: List[CodeSuggestion],
-        inline_count: int,
-        total_files: int = 0,
-        included_chunks: List[DiffChunk] = None,
-        incremental: bool = False,
-        current_sha: str = None,
-        command_quote: str = ""
+        self, response: str, suggestions: List[CodeSuggestion], inline_count: int,
+        total_files: int = 0, included_chunks: List[DiffChunk] = None,
+        incremental: bool = False, current_sha: str = None, command_quote: str = ""
     ) -> str:
         """Format a short summary when inline comments were posted."""
         try:
@@ -253,83 +286,69 @@ Please output review results in YAML format."""
             elif "```" in response:
                 yaml_content = response.split("```")[1].split("```")[0]
             data = yaml.safe_load(yaml_content)
-            summary = data.get("summary", "").strip()
-            # Get file descriptions from AI response
+            summary = self._clean_tokenization(data.get("summary", "").strip())
             file_summaries = {}
             for fs in data.get("file_summaries", []):
                 f = fs.get("file", "")
                 desc = fs.get("description", "")
                 if f and desc:
-                    file_summaries[f] = desc
+                    file_summaries[f] = self._clean_tokenization(desc)
         except Exception:
             summary = ""
             file_summaries = {}
 
         lines = []
-
-        # Add command quote if provided
         if command_quote:
             lines.append(f"> {command_quote}")
             lines.append("")
 
-        # Pull request overview
         lines.append("### 🌗 Pull request overview")
         if summary:
             lines.append(f"{summary}\n")
         else:
             lines.append("Code review completed.\n")
 
-        # Reviewed changes - Copilot style
         files_reviewed = total_files if total_files > 0 else len(included_chunks) if included_chunks else 0
         lines.append("**Reviewed changes**")
         lines.append(f"Kimi reviewed {files_reviewed} changed files in this pull request and generated {inline_count} comments.\n")
 
-        # Show a summary per file (collapsible) - always show if we have chunks
         if included_chunks:
             lines.append("<details>")
             lines.append("<summary>Show a summary per file</summary>\n")
             lines.append("| File | Description |")
             lines.append("|------|-------------|")
             for chunk in included_chunks:
-                # Use AI description if available, otherwise fallback to change type
                 if chunk.filename in file_summaries:
                     desc = file_summaries[chunk.filename]
                 else:
-                    change_desc = {
-                        "added": "New file",
-                        "deleted": "File removed", 
-                        "modified": "Code changes",
-                        "renamed": "File renamed"
+                    change_desc = {"added": "New file", "deleted": "File removed", 
+                                   "modified": "Code changes", "renamed": "File renamed"
                     }.get(chunk.change_type, "Code changes")
                     desc = f"{change_desc} ({chunk.language})" if chunk.language else change_desc
                 lines.append(f"| `{chunk.filename}` | {desc} |")
             lines.append("\n</details>\n")
 
-        # Issues found - brief list
         if suggestions:
             lines.append("**Issues found:**")
             sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
             for s in suggestions[:5]:
                 icon = sev_icons.get(s.severity.value, "⚪")
-                file_name = s.relevant_file or "unknown"
-                issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                file_name = self._clean_tokenization(s.relevant_file or "unknown")
+                issue_summary = self._clean_tokenization((s.one_sentence_summary or "").replace("\n", " ").strip())
                 lines.append(f"- {icon} `{file_name}`: {issue_summary}")
             if len(suggestions) > 5:
                 lines.append(f"- ... and {len(suggestions) - 5} more")
             lines.append("")
 
         lines.append(self.format_footer())
-
         if current_sha:
             lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
-
         return "\n".join(lines)
 
     def _run_scripts(self, skill, diff: str) -> str:
         """Run skill scripts and collect output."""
         if not skill.scripts:
             return ""
-
         output_parts = []
         lang = self._detect_language(diff)
 
@@ -353,8 +372,6 @@ Please output review results in YAML format."""
     def _build_system_prompt(self, skill, script_output: str, diff: str) -> str:
         """Build system prompt from skill and context."""
         parts = [skill.instructions]
-
-        # Review level
         level_text = {
             "strict": """Review Level: Strict - Perform thorough analysis including:
 - Thread safety and race condition detection
@@ -366,15 +383,10 @@ Please output review results in YAML format."""
             "gentle": "Review Level: Gentle - Only flag critical issues that would break functionality"
         }
         parts.append(f"\n## {level_text.get(self.config.review_level, level_text['normal'])}")
-
-        # Script output
         if script_output:
             parts.append(f"\n## Automated Check Results\n{script_output}")
-
-        # Extra instructions
         if self.config.review.extra_instructions:
             parts.append(f"\n## Extra Instructions\n{self.config.review.extra_instructions}")
-
         return "\n".join(parts)
 
     def _detect_language(self, diff: str) -> str:
@@ -409,22 +421,20 @@ Please output review results in YAML format."""
             suggestions_data = data.get("suggestions", [])
             if not suggestions_data:
                 logger.info("No suggestions in YAML response")
-                # Return empty but this is valid - no issues found
                 return []
 
             suggestions = []
             for s in suggestions_data:
                 severity_str = s.get("severity", "medium").lower()
                 severity = SeverityLevel(severity_str) if severity_str in ["critical", "high", "medium", "low"] else SeverityLevel.MEDIUM
-
                 suggestions.append(CodeSuggestion(
                     id=str(uuid.uuid4())[:8],
-                    relevant_file=s.get("relevant_file", ""),
+                    relevant_file=self._clean_tokenization(s.get("relevant_file", "")),
                     language=s.get("language", ""),
-                    suggestion_content=s.get("suggestion_content", ""),
+                    suggestion_content=self._clean_tokenization(s.get("suggestion_content", "")),
                     existing_code=s.get("existing_code", ""),
                     improved_code=s.get("improved_code", ""),
-                    one_sentence_summary=s.get("one_sentence_summary", ""),
+                    one_sentence_summary=self._clean_tokenization(s.get("one_sentence_summary", "")),
                     relevant_lines_start=s.get("relevant_lines_start", 0),
                     relevant_lines_end=s.get("relevant_lines_end", 0),
                     label=s.get("label", "bug"),
@@ -434,18 +444,13 @@ Please output review results in YAML format."""
             return suggestions
         except Exception as e:
             logger.error(f"Failed to parse suggestions: {e}")
-            logger.debug(f"Response was: {response[:500]}...")
             return []
 
+
     def _format_review(
-        self,
-        response: str,
-        valid: List[CodeSuggestion],
-        discarded: List[CodeSuggestion],
-        excluded_files: List[DiffChunk] = None,
-        included_chunks: List[DiffChunk] = None,
-        incremental: bool = False,
-        current_sha: str = None
+        self, response: str, valid: List[CodeSuggestion], discarded: List[CodeSuggestion],
+        excluded_files: List[DiffChunk] = None, included_chunks: List[DiffChunk] = None,
+        incremental: bool = False, current_sha: str = None
     ) -> str:
         """Format review in Copilot-style format."""
         try:
@@ -459,14 +464,11 @@ Please output review results in YAML format."""
             return self._format_fallback(response, current_sha)
 
         lines = []
-
-        # Pull request overview
-        summary = data.get("summary", "").strip()
+        summary = self._clean_tokenization(data.get("summary", "").strip())
         lines.append("### Pull request overview")
         if summary:
             lines.append(f"{summary}\n")
 
-        # Key Changes (extract from suggestions or included chunks)
         if valid:
             lines.append("**Key Changes:**")
             files_changed = set(s.relevant_file for s in valid if s.relevant_file)
@@ -474,31 +476,22 @@ Please output review results in YAML format."""
                 lines.append(f"- `{f}`")
             lines.append("")
 
-        # Reviewed changes summary - use included_chunks for accurate file count
         total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in valid + discarded if s.relevant_file))
         if excluded_files:
             total_files += len(excluded_files)
         lines.append("**Reviewed changes**")
         lines.append(f"Kimi reviewed {total_files} changed files and generated {len(valid)} comments.\n")
 
-        # Comments section
         if valid:
             lines.append("---\n")
-            
             for s in valid:
-                # File and line location
                 location = f"`{s.relevant_file}`"
                 if s.relevant_lines_start:
                     location += f" line {s.relevant_lines_start}"
                     if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
                         location += f"-{s.relevant_lines_end}"
-
                 lines.append(f"📍 {location}\n")
-                
-                # Issue description
                 lines.append(f"{s.suggestion_content}\n")
-
-                # Suggested change with diff
                 if s.existing_code and s.improved_code:
                     lines.append("**Suggested change**")
                     lines.append("```diff")
@@ -507,10 +500,8 @@ Please output review results in YAML format."""
                     for line in s.improved_code.strip().splitlines():
                         lines.append(f"+ {line}")
                     lines.append("```")
-                
                 lines.append("\n---\n")
 
-        # Collapsed low-priority suggestions
         if discarded:
             lines.append(f"<details>\n<summary>📋 {len(discarded)} low-priority suggestions</summary>\n")
             for s in discarded[:3]:
@@ -519,7 +510,6 @@ Please output review results in YAML format."""
                 lines.append(f"- ... and {len(discarded) - 3} more")
             lines.append("</details>\n")
 
-        # Excluded files
         if excluded_files:
             lines.append(f"<details>\n<summary>📁 {len(excluded_files)} files not reviewed (token limit)</summary>\n")
             for chunk in excluded_files[:5]:
@@ -529,16 +519,13 @@ Please output review results in YAML format."""
             lines.append("</details>\n")
 
         lines.append(self.format_footer())
-
         if current_sha:
             lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
-
         return "\n".join(lines)
 
     def _format_fallback(self, response: str, current_sha: str = None) -> str:
         """Fallback formatting when no suggestions found."""
         try:
-            # Try to parse YAML and format nicely
             yaml_content = response
             if "```yaml" in response:
                 yaml_content = response.split("```yaml")[1].split("```")[0]
@@ -546,7 +533,7 @@ Please output review results in YAML format."""
                 yaml_content = response.split("```")[1].split("```")[0]
             
             data = yaml.safe_load(yaml_content)
-            summary = data.get("summary", "").strip()
+            summary = self._clean_tokenization(data.get("summary", "").strip())
             score = data.get("score", "N/A")
             
             lines = ["## 🌗 Kimi Code Review\n"]
@@ -558,11 +545,9 @@ Please output review results in YAML format."""
             
             if current_sha:
                 lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
-            
             return "\n".join(lines)
         except Exception:
-            # True fallback - just show raw response
-            result = f"## 🌗 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
+            result = f"## 🌗 Kimi Code Review\n\n{self._clean_tokenization(response)}\n\n{self.format_footer()}"
             if current_sha:
                 result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
             return result
