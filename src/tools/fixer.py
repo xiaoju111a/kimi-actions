@@ -222,7 +222,7 @@ Be efficient. Make the fix quickly and stop.
             return final_summary.strip()
         
         # Otherwise, combine all text parts into a coherent summary
-        full_text = " ".join(text_parts)
+        full_text = "".join(text_parts)
         
         # Clean up the text - remove excessive whitespace
         import re

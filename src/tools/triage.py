@@ -203,7 +203,7 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it.
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
 
-            return " ".join(text_parts)
+            return "".join(text_parts)
 
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
