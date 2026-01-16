@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="logo.jpg" alt="Kimi Code Review" width="128">
-</p>
-
 # Kimi Code Review Action
 
 🌗 AI-powered code review using [Kimi](https://kimi.moonshot.cn/) (Moonshot AI)
