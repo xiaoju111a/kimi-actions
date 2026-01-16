@@ -171,7 +171,7 @@ class Triage(BaseTool):
 
 ## Instructions
 
-Analyze this issue and classify it. Do NOT explore the entire codebase - only search if the issue mentions specific files.
+Analyze this issue and classify it. Search the codebase to find files that may be related to this issue.
 
 Return your analysis as JSON (this is REQUIRED):
 ```json
@@ -182,11 +182,11 @@ Return your analysis as JSON (this is REQUIRED):
     "confidence": "high|medium|low",
     "summary": "One-line summary",
     "reason": "Brief explanation",
-    "related_files": ["file1.py"]
+    "related_files": ["file1.py", "file2.py"]
 }}
 ```
 
-IMPORTANT: You MUST output the JSON block above. Do not skip it.
+IMPORTANT: You MUST output the JSON block above. Do not skip it. Search for related files before responding.
 """
 
         try:
