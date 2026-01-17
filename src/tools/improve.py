@@ -204,7 +204,9 @@ suggestions:
             improved = s.get("improved_code", "").strip()
 
             if not file_name or not line_start:
-                skipped.append(f"Missing file/line: {file_name}:{line_start}")
+                reason = f"Missing file/line: file={file_name}, line_start={line_start}"
+                skipped.append(reason)
+                logger.warning(f"Skipping suggestion: {reason}")
                 continue
 
             # Build comment body with suggestion format
@@ -224,19 +226,26 @@ suggestions:
             if line_end and line_end != line_start:
                 comment["start_line"] = line_start
             comments.append(comment)
+            logger.info(f"Prepared inline comment for {file_name}:{line_start}-{line_end or line_start}")
 
+        logger.info(f"Prepared {len(comments)} inline comments, skipped {len(skipped)}")
         if skipped:
-            logger.warning(f"Skipped {len(skipped)} suggestions: {skipped}")
+            logger.warning(f"Skipped suggestions: {skipped[:3]}")  # Show first 3
 
         if comments:
             try:
+                logger.info(f"Posting {len(comments)} inline comments to PR #{pr_number}")
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments, body=summary_body, event="COMMENT"
                 )
+                logger.info(f"Successfully posted {len(comments)} inline comments")
                 return len(comments)
             except Exception as e:
                 logger.error(f"Failed to post inline comments: {e}")
+                logger.error(f"First comment that failed: {comments[0] if comments else 'none'}")
                 return 0
+        
+        logger.warning("No inline comments to post")
         return 0
 
     def _format_summary(self, suggestions: List[dict], inline_count: int, included_chunks=None) -> str:
