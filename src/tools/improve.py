@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import subprocess
 import tempfile
 import yaml
 from typing import List
@@ -37,13 +36,10 @@ class Improve(BaseTool):
 
         # Clone repo and run agent
         with tempfile.TemporaryDirectory() as work_dir:
+            if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
+                return "❌ Failed to clone repository"
+            
             try:
-                clone_url = f"https://github.com/{repo_name}.git"
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", "-b", pr.head.ref, clone_url, work_dir],
-                    check=True, capture_output=True
-                )
-
                 response = asyncio.run(self._run_agent_improve(
                     work_dir=work_dir,
                     diff=compressed_diff,
@@ -66,33 +62,6 @@ class Improve(BaseTool):
                 summary = self._format_summary(suggestions, posted_count, included_chunks, command_quote)
                 return summary
 
-            except subprocess.CalledProcessError:
-                # Fallback: clone default branch
-                try:
-                    subprocess.run(
-                        ["git", "clone", "--depth", "1", clone_url, work_dir],
-                        check=True, capture_output=True
-                    )
-                    response = asyncio.run(self._run_agent_improve(
-                        work_dir=work_dir,
-                        diff=compressed_diff,
-                        skill_instructions=skill_instructions,
-                        num_suggestions=self.config.improve.num_suggestions
-                    ))
-                    
-                    suggestions = self._parse_suggestions(response)
-                    posted_count = 0
-                    if inline and suggestions:
-                        summary = self._format_summary(suggestions, len(suggestions), included_chunks, command_quote)
-                        posted_count = self._post_inline_comments(repo_name, pr_number, suggestions, summary)
-                        if posted_count > 0:
-                            return ""
-                    
-                    summary = self._format_summary(suggestions, posted_count, included_chunks, command_quote)
-                    return summary
-                except Exception as e:
-                    logger.error(f"Improve failed: {e}")
-                    return f"❌ Failed to generate suggestions: {str(e)}"
             except Exception as e:
                 logger.error(f"Improve failed: {e}")
                 return f"❌ Failed to generate suggestions: {str(e)}"
@@ -193,61 +162,10 @@ suggestions:
 
     def _post_inline_comments(self, repo_name: str, pr_number: int, suggestions: List[dict], summary_body: str = "") -> int:
         """Post inline comments with GitHub suggestion format."""
-        comments = []
-        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-thinking`</sub>"
-        skipped = []
-
-        for s in suggestions:
-            file_name = s.get("relevant_file", "")
-            line_start = s.get("relevant_lines_start")
-            line_end = s.get("relevant_lines_end")
-            content = s.get("suggestion_content", "").strip()
-            improved = s.get("improved_code", "").strip()
-
-            if not file_name or not line_start:
-                reason = f"Missing file/line: file={file_name}, line_start={line_start}"
-                skipped.append(reason)
-                logger.warning(f"Skipping suggestion: {reason}")
-                continue
-
-            # Build comment body with suggestion format
-            body = f"{content}\n\n"
-            if improved:
-                body += "```suggestion\n"
-                body += improved
-                body += "\n```"
-            body += footer
-
-            comment = {
-                "path": file_name,
-                "line": line_end if line_end else line_start,
-                "body": body,
-                "side": "RIGHT"
-            }
-            if line_end and line_end != line_start:
-                comment["start_line"] = line_start
-            comments.append(comment)
-            logger.info(f"Prepared inline comment for {file_name}:{line_start}-{line_end or line_start}")
-
-        logger.info(f"Prepared {len(comments)} inline comments, skipped {len(skipped)}")
-        if skipped:
-            logger.warning(f"Skipped suggestions: {skipped[:3]}")  # Show first 3
-
-        if comments:
-            try:
-                logger.info(f"Posting {len(comments)} inline comments to PR #{pr_number}")
-                self.github.create_review_with_comments(
-                    repo_name, pr_number, comments, body=summary_body, event="COMMENT"
-                )
-                logger.info(f"Successfully posted {len(comments)} inline comments")
-                return len(comments)
-            except Exception as e:
-                logger.error(f"Failed to post inline comments: {e}")
-                logger.error(f"First comment that failed: {comments[0] if comments else 'none'}")
-                return 0
-        
-        logger.warning("No inline comments to post")
-        return 0
+        return self.post_inline_comments(
+            repo_name, pr_number, suggestions,
+            summary_body=summary_body, use_suggestion_format=True
+        )
 
     def _format_summary(self, suggestions: List[dict], inline_count: int, included_chunks=None, command_quote: str = "") -> str:
         """Format summary when inline comments are posted."""

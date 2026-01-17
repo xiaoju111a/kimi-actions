@@ -9,7 +9,6 @@ import json
 import logging
 import re
 import tempfile
-import subprocess
 from typing import List, Dict, Optional
 
 from tools.base import BaseTool
@@ -85,14 +84,10 @@ class Triage(BaseTool):
 
         # Clone repo and run agent
         with tempfile.TemporaryDirectory() as work_dir:
+            if not self.clone_repo(repo_name, work_dir):
+                return "❌ Failed to clone repository"
+            
             try:
-                # Clone the repo
-                clone_url = f"https://github.com/{repo_name}.git"
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", clone_url, work_dir],
-                    check=True, capture_output=True
-                )
-
                 # Run agent triage
                 result = asyncio.run(self._run_agent_triage(
                     work_dir=work_dir,

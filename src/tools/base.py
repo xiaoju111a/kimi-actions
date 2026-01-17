@@ -169,3 +169,175 @@ class BaseTool(ABC):
             return yaml.safe_load(yaml_content)
         except Exception:
             return None
+
+    def clone_repo(self, repo_name: str, work_dir: str, branch: str = None) -> bool:
+        """Clone repository with fallback logic.
+        
+        Args:
+            repo_name: Repository name (owner/repo)
+            work_dir: Directory to clone into
+            branch: Branch name (optional, falls back to default branch)
+            
+        Returns:
+            True if clone succeeded, False otherwise
+        """
+        import subprocess
+        
+        clone_url = f"https://github.com/{repo_name}.git"
+        
+        try:
+            if branch:
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", "-b", branch, clone_url, work_dir],
+                    check=True, capture_output=True
+                )
+            else:
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", clone_url, work_dir],
+                    check=True, capture_output=True
+                )
+            logger.info(f"Successfully cloned {repo_name}" + (f" (branch: {branch})" if branch else ""))
+            return True
+        except subprocess.CalledProcessError as e:
+            if branch:
+                # Fallback to default branch
+                logger.warning(f"Failed to clone branch {branch}, trying default branch")
+                try:
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", clone_url, work_dir],
+                        check=True, capture_output=True
+                    )
+                    logger.info(f"Successfully cloned {repo_name} (default branch)")
+                    return True
+                except subprocess.CalledProcessError:
+                    logger.error(f"Failed to clone {repo_name}: {e}")
+                    return False
+            else:
+                logger.error(f"Failed to clone {repo_name}: {e}")
+                return False
+
+    async def run_agent(self, work_dir: str, prompt: str) -> str:
+        """Run agent with standard configuration.
+        
+        Args:
+            work_dir: Working directory for agent
+            prompt: Prompt to send to agent
+            
+        Returns:
+            Agent response text
+        """
+        try:
+            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+        except ImportError:
+            logger.error("kimi-agent-sdk not installed")
+            return ""
+
+        api_key = self.setup_agent_env()
+        if not api_key:
+            logger.error("KIMI_API_KEY not found")
+            return ""
+
+        text_parts = []
+        try:
+            async with await Session.create(
+                work_dir=work_dir,
+                model=self.AGENT_MODEL,
+                yolo=True,
+                max_steps_per_turn=100,
+            ) as session:
+                async for msg in session.prompt(prompt):
+                    if isinstance(msg, TextPart):
+                        text_parts.append(msg.text)
+                    elif isinstance(msg, ApprovalRequest):
+                        msg.resolve("approve")
+            
+            response = "".join(text_parts)
+            logger.info(f"Agent completed successfully, response length: {len(response)}")
+            return response
+        except Exception as e:
+            logger.error(f"Agent execution failed: {e}")
+            return ""
+
+    def post_inline_comments(
+        self,
+        repo_name: str,
+        pr_number: int,
+        suggestions: List[dict],
+        summary_body: str = "",
+        use_suggestion_format: bool = True
+    ) -> int:
+        """Post inline comments with optional GitHub suggestion format.
+        
+        Args:
+            repo_name: Repository name
+            pr_number: PR number
+            suggestions: List of suggestion dicts with keys:
+                - relevant_file: File path
+                - relevant_lines_start: Start line number
+                - relevant_lines_end: End line number (optional)
+                - suggestion_content: Description
+                - improved_code: Suggested code (optional)
+            summary_body: Summary comment body
+            use_suggestion_format: Use ```suggestion format for improved_code
+            
+        Returns:
+            Number of comments posted
+        """
+        comments = []
+        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-thinking`</sub>"
+        skipped = []
+
+        for s in suggestions:
+            file_name = s.get("relevant_file", "")
+            line_start = s.get("relevant_lines_start")
+            line_end = s.get("relevant_lines_end")
+            content = s.get("suggestion_content", "").strip()
+            improved = s.get("improved_code", "").strip()
+
+            if not file_name or not line_start:
+                reason = f"Missing file/line: file={file_name}, line_start={line_start}"
+                skipped.append(reason)
+                logger.warning(f"Skipping suggestion: {reason}")
+                continue
+
+            # Build comment body
+            body = f"{content}\n\n"
+            if improved and use_suggestion_format:
+                body += "```suggestion\n"
+                body += improved
+                body += "\n```"
+            elif improved:
+                body += f"**Suggested code:**\n```\n{improved}\n```"
+            body += footer
+
+            comment = {
+                "path": file_name,
+                "line": line_end if line_end else line_start,
+                "body": body,
+                "side": "RIGHT"
+            }
+            if line_end and line_end != line_start:
+                comment["start_line"] = line_start
+            comments.append(comment)
+            logger.debug(f"Prepared inline comment for {file_name}:{line_start}-{line_end or line_start}")
+
+        logger.info(f"Prepared {len(comments)} inline comments, skipped {len(skipped)}")
+        if skipped:
+            logger.warning(f"Skipped suggestions: {skipped[:3]}")
+
+        if comments:
+            try:
+                logger.info(f"Posting {len(comments)} inline comments to PR #{pr_number}")
+                self.github.create_review_with_comments(
+                    repo_name, pr_number, comments, body=summary_body, event="COMMENT"
+                )
+                logger.info(f"Successfully posted {len(comments)} inline comments")
+                return len(comments)
+            except Exception as e:
+                logger.error(f"Failed to post inline comments: {e}")
+                if comments:
+                    logger.error(f"First comment that failed: {comments[0]}")
+                return 0
+        
+        logger.warning("No inline comments to post")
+        return 0

@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import subprocess
 import tempfile
 
 from tools.base import BaseTool, DIFF_LIMIT_ASK
@@ -45,13 +44,10 @@ class Ask(BaseTool):
 
         # Clone repo and run agent
         with tempfile.TemporaryDirectory() as work_dir:
+            if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
+                return "❌ Failed to clone repository"
+            
             try:
-                clone_url = f"https://github.com/{repo_name}.git"
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", "-b", pr.head.ref, clone_url, work_dir],
-                    check=True, capture_output=True
-                )
-
                 response = asyncio.run(self._run_agent_ask(
                     work_dir=work_dir,
                     pr_title=pr.title,
@@ -63,25 +59,6 @@ class Ask(BaseTool):
 
                 return self._format_response(response, inline)
 
-            except subprocess.CalledProcessError:
-                # Fallback: clone default branch if PR branch fails
-                try:
-                    subprocess.run(
-                        ["git", "clone", "--depth", "1", clone_url, work_dir],
-                        check=True, capture_output=True
-                    )
-                    response = asyncio.run(self._run_agent_ask(
-                        work_dir=work_dir,
-                        pr_title=pr.title,
-                        pr_body=pr.body or "",
-                        diff=compressed_diff,
-                        question=question,
-                        skill_instructions=skill_instructions
-                    ))
-                    return self._format_response(response, inline)
-                except Exception as e:
-                    logger.error(f"Ask failed: {e}")
-                    return f"❌ Failed to answer question: {str(e)}"
             except Exception as e:
                 logger.error(f"Ask failed: {e}")
                 return f"❌ Failed to answer question: {str(e)}"

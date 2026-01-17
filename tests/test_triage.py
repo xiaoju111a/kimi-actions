@@ -106,7 +106,7 @@ class TestTriageIntegration:
             instructions="Triage the issue", scripts={}
         ))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "bug", "priority": "high", "labels": ["bug", "priority: high"], "confidence": "high", "summary": "App crashes on login", "reason": "Clear bug report"}'
@@ -127,7 +127,7 @@ class TestTriageIntegration:
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "feature", "priority": "medium", "labels": ["feature"], "confidence": "high", "summary": "Dark mode request", "reason": "New feature"}'
@@ -147,7 +147,7 @@ class TestTriageIntegration:
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "question", "priority": "low", "labels": ["question"], "confidence": "high", "summary": "API config question", "reason": "User asking for help"}'
@@ -166,7 +166,7 @@ class TestTriageIntegration:
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "bug", "priority": "high", "labels": ["bug"], "confidence": "high", "summary": "Bug", "reason": "Bug"}'
@@ -185,7 +185,7 @@ class TestTriageIntegration:
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "bug", "priority": "high", "labels": ["bug", "invalid-label", "nonexistent"], "confidence": "high", "summary": "Bug", "reason": "Bug"}'
@@ -207,7 +207,7 @@ class TestTriageIntegration:
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "unknown", "priority": "medium", "labels": [], "confidence": "low", "summary": "Unclear", "reason": "No body"}'
@@ -226,7 +226,7 @@ class TestTriageIntegration:
         triage.skill_manager = Mock()
         triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
 
-        with patch('tools.triage.subprocess') as mock_subprocess, \
+        with patch('subprocess.run') as mock_subprocess, \
              patch('tools.triage.asyncio.run') as mock_asyncio:
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = "This is not valid JSON"

@@ -7,7 +7,6 @@ Supports inline comments and incremental review.
 
 import asyncio
 import logging
-import subprocess
 import tempfile
 from typing import List, Tuple, Optional
 import uuid
@@ -56,31 +55,15 @@ class Reviewer(BaseTool):
         system_prompt = self._build_system_prompt(skill, script_output, compressed_diff)
 
         with tempfile.TemporaryDirectory() as work_dir:
+            if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
+                return f"### 🌗 Pull request overview\n\n❌ Failed to clone repository\n\n{self.format_footer()}"
+            
             try:
-                clone_url = f"https://github.com/{repo_name}.git"
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", "-b", pr.head.ref, clone_url, work_dir],
-                    check=True, capture_output=True
-                )
                 response = asyncio.run(self._run_agent_review(
                     work_dir=work_dir, system_prompt=system_prompt,
                     pr_title=pr.title, pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
                     diff=compressed_diff
                 ))
-            except subprocess.CalledProcessError:
-                try:
-                    subprocess.run(
-                        ["git", "clone", "--depth", "1", clone_url, work_dir],
-                        check=True, capture_output=True
-                    )
-                    response = asyncio.run(self._run_agent_review(
-                        work_dir=work_dir, system_prompt=system_prompt,
-                        pr_title=pr.title, pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
-                        diff=compressed_diff
-                    ))
-                except Exception as e:
-                    logger.error(f"Review failed: {e}")
-                    return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
             except Exception as e:
                 logger.error(f"Review failed: {e}")
                 return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
@@ -219,42 +202,21 @@ suggestions:
         summary_body: str = ""
     ):
         """Post inline comments with GitHub native suggestion format."""
-        comments = []
-        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-thinking`</sub>"
-        skipped = []
-
+        # Convert CodeSuggestion objects to dict format expected by BaseTool
+        suggestion_dicts = []
         for s in suggestions:
-            if not s.relevant_file or not s.relevant_lines_start:
-                skipped.append(f"Missing file/line: {s.relevant_file}:{s.relevant_lines_start}")
-                continue
-
-            body = f"{s.suggestion_content}"
-            if s.improved_code:
-                body += f"\n\n```suggestion\n{s.improved_code.strip()}\n```"
-            body += footer
-
-            comment = {
-                "path": s.relevant_file,
-                "line": s.relevant_lines_end if s.relevant_lines_end else s.relevant_lines_start,
-                "body": body, "side": "RIGHT"
-            }
-            if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
-                comment["start_line"] = s.relevant_lines_start
-            comments.append(comment)
-
-        if skipped:
-            logger.warning(f"Skipped {len(skipped)} suggestions: {skipped}")
-
-        if comments:
-            try:
-                self.github.create_review_with_comments(
-                    repo_name, pr_number, comments, body=summary_body, event="COMMENT"
-                )
-                return len(comments)
-            except Exception as e:
-                logger.error(f"Failed to post inline comments: {e}")
-                return 0
-        return 0
+            suggestion_dicts.append({
+                "relevant_file": s.relevant_file,
+                "relevant_lines_start": s.relevant_lines_start,
+                "relevant_lines_end": s.relevant_lines_end,
+                "suggestion_content": s.suggestion_content,
+                "improved_code": s.improved_code
+            })
+        
+        return self.post_inline_comments(
+            repo_name, pr_number, suggestion_dicts,
+            summary_body=summary_body, use_suggestion_format=True
+        )
 
 
     def _format_inline_summary(
