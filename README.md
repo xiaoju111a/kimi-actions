@@ -58,16 +58,16 @@
 │                                      │                                       │
 │           ┌──────────────────────────┴──────────────────────────┐            │
 │           ▼                                                     ▼            │
-│   ┌──────────────────────────────────────────┐        ┌──────────────┐      │
-│   │         Kimi Agent SDK                   │        │  GitHub API  │      │
-│   │         (kimi-k2-thinking)               │        │    (REST)    │      │
-│   │                                          │        │              │      │
-│   │  • Automatic token management            │        │              │      │
-│   │  • Automatic script execution            │        │              │      │
-│   │  • Context window management             │        │              │      │
-│   │  • Built-in tools (read/write/bash)      │        │              │      │
-│   │  • Skills directory integration          │        │              │      │
-│   └──────────────────────────────────────────┘        └──────────────┘      │
+│   ┌──────────────────────────────────────────┐        ┌──────────────┐       │
+│   │         Kimi Agent SDK                   │        │  GitHub API  │       │
+│   │         (kimi-k2-thinking)               │        │    (REST)    │       │
+│   │                                          │        │              │       │
+│   │  • Automatic token management            │        │              │       │
+│   │  • Automatic script execution            │        │              │       │
+│   │  • Context window management             │        │              │       │
+│   │  • Built-in tools (read/write/bash)      │        │              │       │
+│   │  • Skills directory integration          │        │              │       │
+│   └──────────────────────────────────────────┘        └──────────────┘       │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
