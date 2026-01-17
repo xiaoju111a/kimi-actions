@@ -187,7 +187,7 @@ suggestions:
             return f"## 🌗 Kimi Code Suggestions\n\n{response}\n\n{self.format_footer()}"
 
     def _format_structured(self, suggestions: List[dict]) -> str:
-        """Format structured suggestions."""
+        """Format structured suggestions with GitHub suggested changes format."""
         lines = ["## 🌗 Kimi Code Suggestions\n"]
 
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -235,11 +235,23 @@ suggestions:
             lines.append(f"📍 {location}\n")
             lines.append(f"{content}\n")
 
-            if existing:
-                lines.append("<details>\n<summary>View code comparison</summary>\n")
+            # Use GitHub's suggested change format if we have both existing and improved code
+            if existing and improved:
+                lines.append("**Suggested change:**")
+                lines.append("```suggestion")
+                lines.append(improved)
+                lines.append("```\n")
+                
+                # Also show the comparison in a collapsible section
+                lines.append("<details>")
+                lines.append("<summary>View full comparison</summary>\n")
                 lines.append(f"**Current code:**\n```{language}\n{existing}\n```\n")
-                if improved:
-                    lines.append(f"**Suggested:**\n```{language}\n{improved}\n```")
+                lines.append(f"**Suggested:**\n```{language}\n{improved}\n```")
+                lines.append("</details>\n")
+            elif existing:
+                lines.append("<details>")
+                lines.append("<summary>View current code</summary>\n")
+                lines.append(f"**Current code:**\n```{language}\n{existing}\n```")
                 lines.append("</details>\n")
 
         lines.append(self.format_footer(f"{len(suggestions)} suggestions"))
