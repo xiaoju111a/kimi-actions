@@ -210,7 +210,7 @@ Use these commands in Issue comments:
     language: 'en-US'               # Response language: zh-CN, en-US
     model: 'kimi-k2-thinking'       # Kimi model (default: kimi-k2-thinking)
     review_level: 'normal'          # Review strictness: strict, normal, gentle
-    max_files: '10'                 # Max files to review
+    max_files: '50'                 # Max files to review (default: 50)
     exclude_patterns: '*.lock,*.min.js'  # File patterns to exclude
     auto_review: 'true'             # Auto review on PR open
     auto_describe: 'false'          # Auto generate description on PR open
