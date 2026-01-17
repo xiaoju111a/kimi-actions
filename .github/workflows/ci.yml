@@ -21,7 +21,7 @@ jobs:
         run: pip install ruff
       
       - name: Run linter
-        run: ruff check src/
+        run: ruff check src/ tests/
 
   test:
     runs-on: ubuntu-latest
@@ -36,7 +36,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pytest-asyncio
       
       - name: Run tests
         run: PYTHONPATH=src pytest tests/ -v --cov=src --cov-report=term-missing
+        
+      - name: Upload coverage reports
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: false

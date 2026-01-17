@@ -1,5 +1,6 @@
 """Tests for BaseTool class."""
 
+import asyncio
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 import sys
@@ -194,8 +195,8 @@ class TestBaseToolCloneRepo:
 class TestBaseToolRunAgent:
     """Test run_agent method."""
     
-    @pytest.mark.asyncio
-    async def test_run_agent_success(self, mock_action_config):
+    
+    def test_run_agent_success(self, mock_action_config):
         """Test successful agent execution."""
         github = MockGitHubClient()
         tool = ConcreteTool.create(github)
@@ -226,30 +227,30 @@ class TestBaseToolRunAgent:
             
             with patch('kimi_agent_sdk.Session.create', return_value=mock_session):
                 with patch('kimi_agent_sdk.TextPart', MockTextPart):
-                    result = await tool.run_agent("/tmp/test", "Test prompt")
+                    result = asyncio.run(tool.run_agent("/tmp/test", "Test prompt"))
                     
                     assert "Response text" in result or result == ""  # May be empty if import fails
     
-    @pytest.mark.asyncio
-    async def test_run_agent_no_api_key(self, mock_action_config):
+    
+    def test_run_agent_no_api_key(self, mock_action_config):
         """Test agent execution without API key."""
         github = MockGitHubClient()
         tool = ConcreteTool.create(github)
         
         with patch.dict(os.environ, {}, clear=True):
-            result = await tool.run_agent("/tmp/test", "Test prompt")
+            result = asyncio.run(tool.run_agent("/tmp/test", "Test prompt"))
             
             assert result == ""
     
-    @pytest.mark.asyncio
-    async def test_run_agent_import_error(self, mock_action_config):
+    
+    def test_run_agent_import_error(self, mock_action_config):
         """Test agent execution with import error."""
         github = MockGitHubClient()
         tool = ConcreteTool.create(github)
         
         with patch.dict(os.environ, {"KIMI_API_KEY": "test-key"}):
             with patch('builtins.__import__', side_effect=ImportError("Module not found")):
-                result = await tool.run_agent("/tmp/test", "Test prompt")
+                result = asyncio.run(tool.run_agent("/tmp/test", "Test prompt"))
                 
                 assert result == ""
 
