@@ -75,7 +75,6 @@ class Labels(BaseTool):
         if not api_key:
             return '{"labels": [], "reason": "KIMI_API_KEY required"}'
 
-
         text_parts = []
         labels_prompt = f"""{skill_instructions}
 
@@ -101,17 +100,24 @@ Rules:
 """
 
         try:
+            # Use auto-detected skills_dir from BaseTool
+            skills_path = self.get_skills_dir()
+            
             async with await Session.create(
                 work_dir="/tmp",
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
+                skills_dir=skills_path,
             ) as session:
                 async for msg in session.prompt(labels_prompt):
                     if isinstance(msg, TextPart):
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
+            
+            if skills_path:
+                logger.info(f"Labels used skills from: {skills_path}")
             return "".join(text_parts)
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")

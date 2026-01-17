@@ -1,77 +1,19 @@
-"""Token handling and intelligent chunking for Kimi Actions.
+"""Intelligent diff chunking for large PRs.
 
 Features:
-- Accurate token estimation for Chinese/English mixed content
-- Intelligent diff chunking with priority scoring
-- Fallback model support for large PRs
+- Priority-based file selection (security, core logic prioritized)
 - File filtering (binary, lock files, etc.)
+- Token-aware chunking to fit context limits
 """
 
 import re
 import logging
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, FrozenSet
-from enum import Enum
 
 from diff_processor import should_exclude, DEFAULT_EXCLUDE_PATTERNS
 
 logger = logging.getLogger(__name__)
-
-
-class ModelTier(Enum):
-    """Model tiers for fallback strategy."""
-    PRIMARY = "primary"
-    FALLBACK = "fallback"
-
-
-@dataclass
-class ModelConfig:
-    """Model configuration with token limits."""
-    name: str
-    max_context: int
-    max_output: int = 8192
-    tier: ModelTier = ModelTier.PRIMARY
-    description: str = ""
-
-
-# Kimi model configurations
-KIMI_MODELS: Dict[str, ModelConfig] = {
-    "kimi-k2-0905-preview": ModelConfig(
-        name="kimi-k2-0905-preview",
-        max_context=256000,
-        max_output=8192,
-        tier=ModelTier.PRIMARY,
-        description="Kimi K2 most powerful version"
-    ),
-    "kimi-k2-turbo-preview": ModelConfig(
-        name="kimi-k2-turbo-preview",
-        max_context=256000,
-        max_output=8192,
-        tier=ModelTier.PRIMARY,
-        description="Kimi K2 high-speed version (recommended)"
-    ),
-}
-
-# No fallback needed - K2 models have 256K context
-# If diff is too large, use intelligent chunking instead
-FALLBACK_CHAIN: List[str] = [
-    "kimi-k2-turbo-preview",
-]
-
-
-@dataclass
-class TokenStats:
-    """Token statistics for content."""
-    total_tokens: int
-    chinese_tokens: int
-    english_tokens: int
-    code_tokens: int
-    total_chars: int
-
-    @property
-    def density(self) -> float:
-        """Characters per token ratio."""
-        return self.total_chars / max(self.total_tokens, 1)
 
 
 @dataclass
@@ -87,132 +29,6 @@ class DiffChunk:
     @property
     def size(self) -> int:
         return len(self.content)
-
-
-@dataclass
-class TokenHandlerConfig:
-    """Configuration constants for token handling."""
-    # Token estimation ratios (characters per token)
-    chinese_chars_per_token: float = 1.5
-    english_chars_per_token: float = 4.0
-    code_chars_per_token: float = 3.5
-    
-    # Reserved tokens
-    system_prompt_reserve: int = 2000
-    response_reserve: int = 8192
-    
-    # Safety margin (use 90% of available context)
-    safety_margin: float = 0.9
-    
-    # Minimum useful chunk size in tokens
-    min_chunk_tokens: int = 500
-
-
-# Default token handler configuration
-DEFAULT_TOKEN_CONFIG = TokenHandlerConfig()
-
-
-class TokenHandler:
-    """Handles token estimation and content chunking."""
-
-    def __init__(
-        self,
-        model: str = "kimi-k2-turbo-preview",
-        config: Optional[TokenHandlerConfig] = None
-    ) -> None:
-        """Initialize token handler.
-        
-        Args:
-            model: Primary model name
-            config: Token handler configuration (uses defaults if None)
-        """
-        self.model = model
-        self.model_config = KIMI_MODELS.get(model, KIMI_MODELS["kimi-k2-turbo-preview"])
-        self.config = config or DEFAULT_TOKEN_CONFIG
-
-    @property
-    def max_diff_tokens(self) -> int:
-        """Maximum tokens available for diff content."""
-        available = (
-            self.model_config.max_context
-            - self.config.system_prompt_reserve
-            - self.config.response_reserve
-        )
-        return int(available * self.config.safety_margin)
-
-    def estimate_tokens(self, text: str) -> TokenStats:
-        """Estimate token count for mixed Chinese/English/code content.
-        
-        Uses different ratios for different content types:
-        - Chinese: ~1.5 characters per token
-        - English: ~4 characters per token  
-        - Code: ~3.5 characters per token
-        
-        Args:
-            text: Input text
-            
-        Returns:
-            TokenStats with detailed breakdown
-        """
-        if not text:
-            return TokenStats(0, 0, 0, 0, 0)
-
-        # Count Chinese characters (CJK Unified Ideographs)
-        chinese_pattern = r'[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]'
-        chinese_chars = len(re.findall(chinese_pattern, text))
-
-        # Count code blocks (rough heuristic)
-        code_pattern = r'```[\s\S]*?```|`[^`]+`'
-        code_matches = re.findall(code_pattern, text)
-        code_chars = sum(len(m) for m in code_matches)
-
-        # Remaining is English/other
-        other_chars = len(text) - chinese_chars - code_chars
-
-        # Calculate tokens for each type
-        chinese_tokens = int(chinese_chars / self.config.chinese_chars_per_token)
-        code_tokens = int(code_chars / self.config.code_chars_per_token)
-        english_tokens = int(other_chars / self.config.english_chars_per_token)
-
-        total_tokens = chinese_tokens + code_tokens + english_tokens
-
-        return TokenStats(
-            total_tokens=total_tokens,
-            chinese_tokens=chinese_tokens,
-            english_tokens=english_tokens,
-            code_tokens=code_tokens,
-            total_chars=len(text)
-        )
-
-    def count_tokens(self, text: str) -> int:
-        """Simple token count (convenience method)."""
-        return self.estimate_tokens(text).total_tokens
-
-    def fits_in_context(self, text: str, reserve: int = 0) -> bool:
-        """Check if text fits in available context."""
-        tokens = self.count_tokens(text)
-        return tokens <= (self.max_diff_tokens - reserve)
-
-    def get_fallback_model(self, tokens_needed: int) -> Optional[str]:
-        """Get appropriate fallback model for token count.
-        
-        Args:
-            tokens_needed: Number of tokens needed
-            
-        Returns:
-            Model name that can handle the tokens, or None
-        """
-        for model_name in FALLBACK_CHAIN:
-            config = KIMI_MODELS.get(model_name)
-            if config:
-                available = (
-                    config.max_context
-                    - self.config.system_prompt_reserve
-                    - self.config.response_reserve
-                )
-                if tokens_needed <= available * self.config.safety_margin:
-                    return model_name
-        return None
 
 
 @dataclass
@@ -272,6 +88,14 @@ class DiffChunkerConfig:
     additions_boost: float = 1.1
     security_boost: float = 1.3
     truncated_penalty: float = 0.8
+    
+    # Token estimation (characters per token)
+    chinese_chars_per_token: float = 1.5
+    english_chars_per_token: float = 4.0
+    code_chars_per_token: float = 3.5
+    
+    # Minimum useful chunk size in tokens
+    min_chunk_tokens: int = 500
 
 
 # Default chunker configuration
@@ -283,20 +107,50 @@ class DiffChunker:
 
     def __init__(
         self,
-        token_handler: TokenHandler,
+        max_tokens: int = 15000,
         exclude_patterns: Optional[List[str]] = None,
         config: Optional[DiffChunkerConfig] = None
     ) -> None:
-        """Initialize chunker with token handler.
+        """Initialize chunker.
         
         Args:
-            token_handler: TokenHandler instance
+            max_tokens: Maximum tokens for diff content
             exclude_patterns: File patterns to exclude (uses defaults if None)
             config: Chunker configuration (uses defaults if None)
         """
-        self.token_handler = token_handler
+        self.max_tokens = max_tokens
         self.exclude_patterns = exclude_patterns or DEFAULT_EXCLUDE_PATTERNS
         self.config = config or DEFAULT_CHUNKER_CONFIG
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for mixed Chinese/English/code content.
+        
+        Uses different ratios for different content types:
+        - Chinese: ~1.5 characters per token
+        - English: ~4 characters per token  
+        - Code: ~3.5 characters per token
+        """
+        if not text:
+            return 0
+
+        # Count Chinese characters (CJK Unified Ideographs)
+        chinese_pattern = r'[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]'
+        chinese_chars = len(re.findall(chinese_pattern, text))
+
+        # Count code blocks (rough heuristic)
+        code_pattern = r'```[\s\S]*?```|`[^`]+`'
+        code_matches = re.findall(code_pattern, text)
+        code_chars = sum(len(m) for m in code_matches)
+
+        # Remaining is English/other
+        other_chars = len(text) - chinese_chars - code_chars
+
+        # Calculate tokens for each type
+        chinese_tokens = int(chinese_chars / self.config.chinese_chars_per_token)
+        code_tokens = int(code_chars / self.config.code_chars_per_token)
+        english_tokens = int(other_chars / self.config.english_chars_per_token)
+
+        return chinese_tokens + code_tokens + english_tokens
 
     def _calculate_priority(self, filename: str, content: str) -> float:
         """Calculate priority score for a file.
@@ -372,7 +226,7 @@ class DiffChunker:
                 content = parts[content_start] if content_start < len(parts) else ""
 
                 # Calculate tokens and priority
-                tokens = self.token_handler.count_tokens(content)
+                tokens = self._estimate_tokens(content)
                 priority = self._calculate_priority(filename, content)
                 language = self._detect_language(filename)
                 change_type = self._detect_change_type(content)
@@ -413,7 +267,7 @@ class DiffChunker:
                     continue
 
                 content = parts[i + 1].strip()
-                tokens = self.token_handler.count_tokens(content)
+                tokens = self._estimate_tokens(content)
                 priority = self._calculate_priority(filename, content)
 
                 chunks.append(DiffChunk(
@@ -439,14 +293,14 @@ class DiffChunker:
         
         Args:
             diff: Raw diff string
-            max_tokens: Maximum tokens (default: handler's max_diff_tokens)
+            max_tokens: Maximum tokens (default: self.max_tokens)
             max_files: Maximum number of files to include
             
         Returns:
             Tuple of (included_chunks, excluded_chunks)
         """
         if max_tokens is None:
-            max_tokens = self.token_handler.max_diff_tokens
+            max_tokens = self.max_tokens
 
         chunks = self.parse_diff(diff)
 
@@ -467,8 +321,7 @@ class DiffChunker:
             else:
                 # Try to include truncated version
                 remaining_tokens = max_tokens - current_tokens
-                min_chunk_tokens = self.token_handler.config.min_chunk_tokens
-                if remaining_tokens > min_chunk_tokens:
+                if remaining_tokens > self.config.min_chunk_tokens:
                     truncated = self._truncate_chunk(chunk, remaining_tokens)
                     if truncated:
                         included.append(truncated)
@@ -516,34 +369,3 @@ class DiffChunker:
             parts.append(f"{header}\n{chunk.content}")
 
         return "\n\n".join(parts)
-
-
-def select_model_for_diff(diff: str, preferred_model: str = "kimi-k2-turbo-preview") -> Tuple[str, int]:
-    """Select appropriate model based on diff size.
-    
-    Args:
-        diff: Raw diff string
-        preferred_model: Preferred model to use
-        
-    Returns:
-        Tuple of (model_name, estimated_tokens)
-    """
-    handler = TokenHandler(preferred_model)
-    tokens = handler.count_tokens(diff)
-
-    # Check if preferred model can handle it
-    if handler.fits_in_context(diff):
-        return preferred_model, tokens
-
-    # Find fallback model
-    fallback = handler.get_fallback_model(tokens)
-    if fallback:
-        logger.warning(
-            f"Diff too large for {preferred_model} ({tokens} tokens), "
-            f"falling back to {fallback}"
-        )
-        return fallback, tokens
-
-    # No model can handle it - will need chunking
-    logger.warning(f"Diff too large for any model ({tokens} tokens), chunking required")
-    return preferred_model, tokens

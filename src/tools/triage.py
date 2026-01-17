@@ -185,11 +185,15 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it. Search for rela
 """
 
         try:
+            # Use auto-detected skills_dir from BaseTool
+            skills_path = self.get_skills_dir()
+            
             async with await Session.create(
                 work_dir=work_dir,
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
+                skills_dir=skills_path,
             ) as session:
                 async for msg in session.prompt(triage_prompt):
                     if isinstance(msg, TextPart):
@@ -197,6 +201,8 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it. Search for rela
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
 
+            if skills_path:
+                logger.info(f"Triage used skills from: {skills_path}")
             return "".join(text_parts)
 
         except Exception as e:

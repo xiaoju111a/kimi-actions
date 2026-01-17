@@ -42,24 +42,32 @@
 │  │  │                          BaseTool                                │  │  │
 │  │  │   • clone_repo()    • run_agent()       • format_footer()        │  │  │
 │  │  │   • get_diff()      • get_skill()       • post_inline_comments() │  │  │
+│  │  │   • load_context()  • get_skills_dir()  • parse_yaml_response()  │  │  │
 │  │  └──────────────────────────────────────────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
 │                                      │                                       │
 │           ┌──────────────────────────┼──────────────────────────┐            │
 │           ▼                          ▼                          ▼            │
-│   ┌──────────────┐         ┌──────────────┐          ┌──────────────┐        │
-│   │ SkillManager │         │ TokenHandler │          │ DiffProcessor│        │
-│   │  (SKILL.md)  │         │  (Chunking)  │          │  (Filtering) │        │
-│   └──────────────┘         └──────────────┘          └──────────────┘        │
+│   ┌──────────────┐         ┌──────────────┐          ┌──────────────────┐    │
+│   │ SkillManager │         │ DiffChunker  │          │SuggestionService │    │
+│   │  (SKILL.md)  │         │  (Large PRs) │          │(Post-processing) │    │
+│   │ • Load skills│         │ • Prioritize │          │ • Filter/dedupe  │    │
+│   │ • Set skills_│         │ • Chunk diff │          │ • Validate       │    │
+│   │   dir for SDK│         │ • Exclude    │          │ • Score/sort     │    │
+│   └──────────────┘         └──────────────┘          └──────────────────┘    │
 │                                      │                                       │
 │           ┌──────────────────────────┴──────────────────────────┐            │
 │           ▼                                                     ▼            │
-│   ┌──────────────┐                                     ┌──────────────┐      │
-│   │ Kimi Agent   │◄────── Agent SDK (with tools) ─────►│  GitHub API  │      │
-│   │     SDK      │        • read_file                  │    (REST)    │      │
-│   │ (k2-thinking)│        • write_file                 │              │      │
-│   │              │        • execute_bash               │              │      │
-│   └──────────────┘                                     └──────────────┘      │
+│   ┌──────────────────────────────────────────┐        ┌──────────────┐      │
+│   │         Kimi Agent SDK                   │        │  GitHub API  │      │
+│   │         (kimi-k2-thinking)               │        │    (REST)    │      │
+│   │                                          │        │              │      │
+│   │  • Automatic token management            │        │              │      │
+│   │  • Automatic script execution            │        │              │      │
+│   │  • Context window management             │        │              │      │
+│   │  • Built-in tools (read/write/bash)      │        │              │      │
+│   │  • Skills directory integration          │        │              │      │
+│   └──────────────────────────────────────────┘        └──────────────┘      │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -312,35 +320,47 @@ kimi-actions/
 ├── action.yml                  # GitHub Action definition
 ├── Dockerfile                  # Docker container config
 ├── requirements.txt            # Python dependencies
-├── tests/                      # Unit tests
+├── tests/                      # Unit tests (235 tests)
 └── src/
     ├── main.py                 # Entry point, event routing
     ├── action_config.py        # Action config (env vars)
     ├── repo_config.py          # Repo config (.kimi-config.yml)
     ├── github_client.py        # GitHub API client
-    ├── token_handler.py        # Token estimation + chunking
-    ├── diff_processor.py       # Diff file filtering
+    ├── diff_chunker.py         # Intelligent diff chunking for large PRs
+    ├── diff_processor.py       # Diff file filtering (binary, lock files)
     ├── skill_loader.py         # Skill loading/management
-    ├── suggestion_service.py   # Suggestion filtering
+    ├── suggestion_service.py   # Suggestion post-processing
     ├── models.py               # Data models
     ├── tools/                  # Command implementations (Agent SDK)
-    │   ├── base.py             # Base class (Agent config)
-    │   ├── reviewer.py         # /review
-    │   ├── describe.py         # /describe
-    │   ├── improve.py          # /improve
-    │   ├── ask.py              # /ask
-    │   ├── labels.py           # /labels
-    │   └── triage.py           # /triage
+    │   ├── base.py             # Base class (common functionality)
+    │   ├── reviewer.py         # /review - Code review
+    │   ├── describe.py         # /describe - PR description
+    │   ├── improve.py          # /improve - Code improvements
+    │   ├── ask.py              # /ask - Q&A
+    │   ├── labels.py           # /labels - Label generation
+    │   └── triage.py           # /triage - Issue classification
     └── skills/                 # Built-in Skills
         ├── code-review/
-        │   ├── SKILL.md
-        │   └── scripts/
+        │   ├── SKILL.md        # Review instructions
+        │   └── scripts/        # Review scripts (called by Agent SDK)
         ├── describe/
         ├── improve/
         ├── ask/
         ├── labels/
         └── triage/
+            └── scripts/
+                └── scan_codebase.py
 ```
+
+### Key Components
+
+| Component | Purpose | Notes |
+|-----------|---------|-------|
+| **diff_chunker.py** | Handle large PRs | Priority-based file selection, token-aware chunking |
+| **skill_loader.py** | Manage skills | Load SKILL.md, set skills_dir for Agent SDK |
+| **suggestion_service.py** | Post-process suggestions | Filter, dedupe, validate, score, sort |
+| **base.py** | Common tool functionality | Diff fetching, repo cloning, Agent SDK execution |
+| **Agent SDK** | LLM execution | Automatic token management, script execution, context handling |
 
 ## FAQ
 
@@ -354,10 +374,38 @@ Yes. Just ensure `GITHUB_TOKEN` has permission to read repository contents.
 
 ### Q: What if PR is too large?
 
-The action automatically:
-1. Prioritizes important files (src/ > test/)
-2. Chunks diff intelligently, keeping critical code
-3. Falls back to larger context models
+The action uses **intelligent diff chunking**:
+1. **Priority-based selection**: Security files and core logic prioritized over tests/docs
+2. **Token-aware chunking**: Automatically fits within Agent SDK context limits (256K tokens)
+3. **File filtering**: Excludes binary files, lock files, minified files
+
+Agent SDK automatically manages token counting and context windows.
+
+### Q: What is Agent SDK and why use it?
+
+**Kimi Agent SDK** is an intelligent agent framework that:
+- **Automatic token management**: No need to manually count tokens or manage context
+- **Dynamic script execution**: Automatically calls skill scripts when needed
+- **Built-in tools**: Provides file operations (read/write) and bash execution
+- **Context optimization**: Intelligently manages conversation context
+
+This allows the action to focus on **what to review** (skills, rules) rather than **how to execute** (token counting, script running).
+
+### Q: How do skills work with Agent SDK?
+
+Skills define **what the agent should do**:
+1. **SKILL.md** contains instructions for the agent
+2. **scripts/** contains executable tools (Python scripts)
+3. Agent SDK automatically calls scripts when needed based on instructions
+
+Example flow:
+```
+1. Load skill: code-review
+2. Pass skills_dir to Agent SDK
+3. Agent reads SKILL.md instructions
+4. Agent automatically calls scripts/check_security.py when analyzing code
+5. Agent generates review based on script output + instructions
+```
 
 ### Q: How to customize review rules?
 
@@ -366,6 +414,7 @@ Create `.kimi-config.yml` in your repo root, or add custom Skills in `.kimi/skil
 ## Acknowledgments
 
 - [Moonshot AI](https://www.moonshot.cn/) - Kimi LLM
+- [Kimi Agent SDK](https://github.com/MoonshotAI/kimi-agent-sdk) - Agent framework
 - [pr-agent](https://github.com/qodo-ai/pr-agent) - Architecture reference
 - [kimi-cli](https://github.com/MoonshotAI/kimi-cli) - Kimi CLI tool
 - [kodus-ai](https://github.com/kodustech/kodus-ai) - AI code review reference

@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from token_handler import TokenHandler, DiffChunker, DiffChunk
+from diff_chunker import DiffChunker, DiffChunk
 
 
 class TestDiffChunker:
@@ -14,8 +14,7 @@ class TestDiffChunker:
 
     @pytest.fixture
     def chunker(self):
-        handler = TokenHandler()
-        return DiffChunker(handler)
+        return DiffChunker(max_tokens=15000)
 
     def test_calculate_priority_default(self, chunker):
         priority = chunker._calculate_priority("app.py", "some content")

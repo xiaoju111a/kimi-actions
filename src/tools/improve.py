@@ -83,7 +83,6 @@ class Improve(BaseTool):
         if not api_key:
             return '{"suggestions": []}'
 
-
         text_parts = []
 
         improve_prompt = f"""{skill_instructions}
@@ -118,11 +117,15 @@ suggestions:
 """
 
         try:
+            # Use auto-detected skills_dir from BaseTool
+            skills_path = self.get_skills_dir()
+            
             async with await Session.create(
                 work_dir=work_dir,
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
+                skills_dir=skills_path,
             ) as session:
                 async for msg in session.prompt(improve_prompt):
                     if isinstance(msg, TextPart):
@@ -130,6 +133,8 @@ suggestions:
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
 
+            if skills_path:
+                logger.info(f"Improve used skills from: {skills_path}")
             return "".join(text_parts)
 
         except Exception as e:

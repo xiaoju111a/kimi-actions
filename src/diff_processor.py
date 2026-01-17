@@ -1,7 +1,7 @@
 """Diff processing utilities - file filtering and binary detection.
 
-Note: Diff parsing and chunking moved to token_handler.py (DiffChunker class).
-This module now focuses on file filtering only.
+Note: Diff parsing and chunking is in diff_chunker.py (DiffChunker class).
+This module focuses on file filtering only.
 """
 
 import fnmatch

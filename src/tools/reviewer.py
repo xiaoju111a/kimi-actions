@@ -12,7 +12,7 @@ from typing import List, Tuple, Optional
 import uuid
 
 from tools.base import BaseTool, DIFF_LIMIT_REVIEW
-from token_handler import DiffChunk
+from diff_chunker import DiffChunk
 from models import CodeSuggestion, SeverityLevel, ReviewOptions, SuggestionControl
 from suggestion_service import SuggestionService
 
@@ -51,8 +51,7 @@ class Reviewer(BaseTool):
         if not skill:
             return f"Error: {self.skill_name} skill not found."
 
-        script_output = self._run_scripts(skill, compressed_diff)
-        system_prompt = self._build_system_prompt(skill, script_output, compressed_diff)
+        system_prompt = self._build_system_prompt(skill)
 
         with tempfile.TemporaryDirectory() as work_dir:
             if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
@@ -160,15 +159,21 @@ suggestions:
 """
 
         try:
+            skills_path = self.get_skills_dir()
+            
             async with await Session.create(
                 work_dir=work_dir, model=self.AGENT_MODEL,
                 yolo=True, max_steps_per_turn=100,
+                skills_dir=skills_path,
             ) as session:
                 async for msg in session.prompt(review_prompt):
                     if isinstance(msg, TextPart):
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
+            
+            if skills_path:
+                logger.info(f"Review used skills from: {skills_path}")
             return "".join(text_parts)
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
@@ -290,32 +295,12 @@ suggestions:
             lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
         return "\n".join(lines)
 
-    def _run_scripts(self, skill, diff: str) -> str:
-        """Run skill scripts and collect output."""
-        if not skill.scripts:
-            return ""
-        output_parts = []
-        lang = self._detect_language(diff)
-
-        if "linter" in skill.scripts:
-            result = skill.run_script("linter", lang=lang, code=diff[:5000])
-            if result:
-                output_parts.append(f"## Linter Output\n```text\n{result}\n```")
-
-        if "security_scan" in skill.scripts:
-            result = skill.run_script("security_scan", lang=lang, code=diff[:5000])
-            if result:
-                output_parts.append(f"## Security Scan Output\n```text\n{result}\n```")
-
-        if "context_gatherer" in skill.scripts:
-            result = skill.run_script("context_gatherer", diff=diff, repo=".")
-            if result and result.strip() != "No additional context found.":
-                output_parts.append(f"## Related Context\n{result}")
-
-        return "\n\n".join(output_parts)
-
-    def _build_system_prompt(self, skill, script_output: str, diff: str) -> str:
-        """Build system prompt from skill and context."""
+    def _build_system_prompt(self, skill) -> str:
+        """Build system prompt from skill and context.
+        
+        Note: Agent SDK will automatically call skill scripts when needed,
+        so we don't need to run them manually and include output in prompt.
+        """
         parts = [skill.instructions]
         level_text = {
             "strict": """Review Level: Strict - Perform thorough analysis including:
@@ -328,26 +313,9 @@ suggestions:
             "gentle": "Review Level: Gentle - Only flag critical issues that would break functionality"
         }
         parts.append(f"\n## {level_text.get(self.config.review_level, level_text['normal'])}")
-        if script_output:
-            parts.append(f"\n## Automated Check Results\n{script_output}")
         if self.config.review.extra_instructions:
             parts.append(f"\n## Extra Instructions\n{self.config.review.extra_instructions}")
         return "\n".join(parts)
-
-    def _detect_language(self, diff: str) -> str:
-        """Detect primary language from diff."""
-        patterns = {
-            "python": [".py", "def ", "import "],
-            "javascript": [".js", "const ", "function "],
-            "typescript": [".ts", "interface ", ": string"],
-            "go": [".go", "func ", "package "],
-            "java": [".java", "public class"],
-        }
-        diff_lower = diff.lower()
-        for lang, markers in patterns.items():
-            if any(m.lower() in diff_lower for m in markers):
-                return lang
-        return "python"
 
     def _parse_suggestions(self, response: str) -> List[CodeSuggestion]:
         """Parse YAML response into CodeSuggestion objects."""
