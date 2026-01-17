@@ -15,6 +15,12 @@ from diff_processor import should_exclude, DEFAULT_EXCLUDE_PATTERNS
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled regex patterns for performance
+CHINESE_PATTERN = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]')
+CODE_PATTERN = re.compile(r'```[\s\S]*?```|`[^`]+`')
+FILE_PATTERN = re.compile(r'^diff --git a/(.+?) b/(.+?)$', re.MULTILINE)
+SIMPLE_FILE_PATTERN = re.compile(r'^--- (.+?)$', re.MULTILINE)
+
 
 @dataclass
 class DiffChunk:
@@ -134,12 +140,10 @@ class DiffChunker:
             return 0
 
         # Count Chinese characters (CJK Unified Ideographs)
-        chinese_pattern = r'[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]'
-        chinese_chars = len(re.findall(chinese_pattern, text))
+        chinese_chars = len(CHINESE_PATTERN.findall(text))
 
         # Count code blocks (rough heuristic)
-        code_pattern = r'```[\s\S]*?```|`[^`]+`'
-        code_matches = re.findall(code_pattern, text)
+        code_matches = CODE_PATTERN.findall(text)
         code_chars = sum(len(m) for m in code_matches)
 
         # Remaining is English/other
@@ -207,8 +211,7 @@ class DiffChunker:
             List of DiffChunk objects sorted by priority
         """
         # Split by file headers
-        file_pattern = r'^diff --git a/(.+?) b/(.+?)$'
-        parts = re.split(file_pattern, diff, flags=re.MULTILINE)
+        parts = FILE_PATTERN.split(diff)
 
         chunks: List[DiffChunk] = []
         i = 1
@@ -252,8 +255,7 @@ class DiffChunker:
 
     def _parse_simple_diff(self, diff: str) -> List[DiffChunk]:
         """Fallback parser for simple diff format."""
-        file_pattern = r'^--- (.+?)$'
-        parts = re.split(file_pattern, diff, flags=re.MULTILINE)
+        parts = SIMPLE_FILE_PATTERN.split(diff)
 
         chunks: List[DiffChunk] = []
         for i in range(1, len(parts), 2):

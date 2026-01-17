@@ -8,6 +8,8 @@ Provides common functionality for all tools:
 
 import logging
 import os
+import subprocess
+import yaml
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, Tuple, List
@@ -149,8 +151,6 @@ class BaseTool(ABC):
         Returns:
             Parsed dict or None if parsing fails.
         """
-        import yaml
-        
         try:
             yaml_content = response
             if "```yaml" in response:
@@ -173,8 +173,6 @@ class BaseTool(ABC):
         Returns:
             True if clone succeeded, False otherwise
         """
-        import subprocess
-        
         clone_url = f"https://github.com/{repo_name}.git"
         
         try:
@@ -183,12 +181,14 @@ class BaseTool(ABC):
                     ["git", "clone", "--depth", "1", "-b", branch, clone_url, work_dir],
                     check=True, capture_output=True
                 )
-            else:
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", clone_url, work_dir],
-                    check=True, capture_output=True
-                )
-            logger.info(f"Successfully cloned {repo_name}" + (f" (branch: {branch})" if branch else ""))
+                logger.info(f"Successfully cloned {repo_name} (branch: {branch})")
+                return True
+            
+            subprocess.run(
+                ["git", "clone", "--depth", "1", clone_url, work_dir],
+                check=True, capture_output=True
+            )
+            logger.info(f"Successfully cloned {repo_name}")
             return True
         except subprocess.CalledProcessError as e:
             if branch:
@@ -204,9 +204,9 @@ class BaseTool(ABC):
                 except subprocess.CalledProcessError:
                     logger.error(f"Failed to clone {repo_name}: {e}")
                     return False
-            else:
-                logger.error(f"Failed to clone {repo_name}: {e}")
-                return False
+            
+            logger.error(f"Failed to clone {repo_name}: {e}")
+            return False
 
     def get_skills_dir(self) -> Optional[Path]:
         """Get skills directory from current skill.
@@ -214,7 +214,6 @@ class BaseTool(ABC):
         Returns:
             Path to skills directory if skill has scripts, None otherwise
         """
-        from pathlib import Path
         skill = self.get_skill()
         if skill and skill.skill_dir:
             return Path(skill.skill_dir)
@@ -243,7 +242,6 @@ class BaseTool(ABC):
             return ""
 
         # Auto-detect skills_dir from current skill if not provided
-        from pathlib import Path
         if skills_dir is None:
             skills_path = self.get_skills_dir()
         else:
