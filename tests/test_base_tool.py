@@ -203,7 +203,7 @@ class TestBaseToolRunAgent:
         with patch.dict(os.environ, {"KIMI_API_KEY": "test-key"}):
             # Skip this test if kimi_agent_sdk is not available
             try:
-                import kimi_agent_sdk
+                import kimi_agent_sdk  # noqa: F401
             except ImportError:
                 pytest.skip("kimi_agent_sdk not installed")
             

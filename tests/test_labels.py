@@ -159,7 +159,7 @@ class TestLabelsRepoLabels:
     @patch('tools.labels.asyncio.run')
     def test_run_uses_default_labels_when_empty(self, mock_asyncio, mock_github, mock_pr):
         """Test using default labels when repo has none."""
-        from tools.labels import Labels, DEFAULT_LABELS
+        from tools.labels import Labels
         
         mock_github.get_pr.return_value = mock_pr
         mock_github.get_repo_labels.return_value = []
