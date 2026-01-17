@@ -252,7 +252,12 @@ def handle_comment_event(event: dict, config: ActionConfig):
                 result = "❌ Please provide a question, e.g.: `/ask What does this function do?`"
             else:
                 ask = Ask(github)
-                result = ask.run(repo_name, pr_number, question=args)
+                result = ask.run(repo_name, pr_number, question=args, inline=False)
+                
+                # Add a note if this seems to be in a conversation thread
+                # (heuristic: if the comment body contains quoted text)
+                if ">" in comment_body:
+                    result += "\n\n💡 **Tip**: For code-specific questions, use `/ask` directly in the **Files changed** tab by clicking the **+** button next to the line of code."
 
         elif command == "labels" or command == "label":
             labels_tool = Labels(github)

@@ -184,16 +184,20 @@ jobs:
 
 Use these commands in PR comments:
 
-| Command | Description |
-|---------|-------------|
-| `/review` | Code review with inline comments |
-| `/review --incremental` | Review only new commits |
-| `/describe` | Auto-generate PR description |
-| `/describe --comment` | Generate description as comment |
-| `/improve` | Code improvement suggestions |
-| `/ask <question>` | Q&A about the PR |
-| `/labels` | Auto-generate and apply PR labels |
-| `/help` | Show help message |
+| Command | Description | Usage Location |
+|---------|-------------|----------------|
+| `/review` | Code review with inline comments | PR comment area |
+| `/review --incremental` | Review only new commits | PR comment area |
+| `/describe` | Auto-generate PR description | PR comment area |
+| `/describe --comment` | Generate description as comment | PR comment area |
+| `/improve` | Code improvement suggestions | PR comment area |
+| `/ask <question>` | Q&A about the PR or specific code | PR comment area **or** Files changed tab (inline) |
+| `/labels` | Auto-generate and apply PR labels | PR comment area |
+| `/help` | Show help message | PR comment area |
+
+**💡 Using `/ask` for code-specific questions:**
+- **In PR comment area**: Ask general questions about the entire PR
+- **In Files changed tab**: Click the **+** button next to a line of code, then use `/ask <question>` to ask about that specific code
 
 ### Issue Commands
 
