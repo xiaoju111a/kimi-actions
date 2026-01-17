@@ -103,7 +103,7 @@ class Improve(BaseTool):
 ## Instructions
 1. Analyze the code changes
 2. If needed, read related files to understand context
-3. Provide improvement suggestions
+3. Provide improvement suggestions with specific line numbers
 
 Return suggestions in YAML format:
 ```yaml
@@ -115,7 +115,11 @@ suggestions:
     suggestion_content: "Detailed suggestion"
     existing_code: "current code"
     improved_code: "suggested code"
+    relevant_lines_start: 10
+    relevant_lines_end: 15
 ```
+
+**IMPORTANT**: Always include relevant_lines_start and relevant_lines_end to indicate the exact location of the issue.
 """
 
         try:
@@ -191,11 +195,22 @@ suggestions:
 
         severity_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
 
-        lines.append("| # | File | Severity |\n|---|------|----------|")
+        lines.append("| # | File | Line | Severity |\n|---|------|------|----------|")
         for i, s in enumerate(suggestions, 1):
             sev = s.get("severity", "medium")
             file_name = s.get('relevant_file', '')
-            lines.append(f"| {i} | `{file_name}` | {severity_icons.get(sev, '⚪')} {sev} |")
+            line_start = s.get('relevant_lines_start', '')
+            line_end = s.get('relevant_lines_end', '')
+            
+            # Format line number display
+            if line_start and line_end and line_start != line_end:
+                line_info = f"{line_start}-{line_end}"
+            elif line_start:
+                line_info = str(line_start)
+            else:
+                line_info = "-"
+            
+            lines.append(f"| {i} | `{file_name}` | {line_info} | {severity_icons.get(sev, '⚪')} {sev} |")
 
         lines.append("\n---\n")
 
@@ -205,8 +220,19 @@ suggestions:
             existing = s.get("existing_code", "").strip()
             improved = s.get("improved_code", "").strip()
             language = s.get("language", "")
+            file_name = s.get('relevant_file', '')
+            line_start = s.get('relevant_lines_start', '')
+            line_end = s.get('relevant_lines_end', '')
+
+            # Build location string
+            location = f"`{file_name}`"
+            if line_start and line_end and line_start != line_end:
+                location += f" (lines {line_start}-{line_end})"
+            elif line_start:
+                location += f" (line {line_start})"
 
             lines.append(f"### Suggestion {i}: {summary}\n")
+            lines.append(f"📍 {location}\n")
             lines.append(f"{content}\n")
 
             if existing:
