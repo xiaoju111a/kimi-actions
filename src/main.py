@@ -241,7 +241,11 @@ def handle_comment_event(event: dict, config: ActionConfig):
 
         elif command == "improve":
             improve = Improve(github)
-            result = improve.run(repo_name, pr_number)
+            # Build command string for quote
+            original_command = "/improve"
+            if args:
+                original_command += f" {args}"
+            result = improve.run(repo_name, pr_number, inline=True, command_quote=original_command)
 
         elif command == "ask":
             if not args:

@@ -22,6 +22,7 @@ class Improve(BaseTool):
     def run(self, repo_name: str, pr_number: int, **kwargs) -> str:
         """Generate code improvement suggestions."""
         inline = kwargs.get("inline", True)
+        command_quote = kwargs.get("command_quote", "")
         
         pr = self.github.get_pr(repo_name, pr_number)
         self.load_context(repo_name, ref=pr.head.sha)
@@ -56,13 +57,13 @@ class Improve(BaseTool):
                 # Try to post inline comments if enabled
                 posted_count = 0
                 if inline and suggestions:
-                    summary = self._format_summary(suggestions, len(suggestions), included_chunks)
+                    summary = self._format_summary(suggestions, len(suggestions), included_chunks, command_quote)
                     posted_count = self._post_inline_comments(repo_name, pr_number, suggestions, summary)
                     if posted_count > 0:
                         return ""  # Inline comments posted, no need for regular comment
                 
                 # Fallback to regular comment format
-                summary = self._format_summary(suggestions, posted_count, included_chunks)
+                summary = self._format_summary(suggestions, posted_count, included_chunks, command_quote)
                 return summary
 
             except subprocess.CalledProcessError:
@@ -82,12 +83,12 @@ class Improve(BaseTool):
                     suggestions = self._parse_suggestions(response)
                     posted_count = 0
                     if inline and suggestions:
-                        summary = self._format_summary(suggestions, len(suggestions), included_chunks)
+                        summary = self._format_summary(suggestions, len(suggestions), included_chunks, command_quote)
                         posted_count = self._post_inline_comments(repo_name, pr_number, suggestions, summary)
                         if posted_count > 0:
                             return ""
                     
-                    summary = self._format_summary(suggestions, posted_count, included_chunks)
+                    summary = self._format_summary(suggestions, posted_count, included_chunks, command_quote)
                     return summary
                 except Exception as e:
                     logger.error(f"Improve failed: {e}")
@@ -248,12 +249,19 @@ suggestions:
         logger.warning("No inline comments to post")
         return 0
 
-    def _format_summary(self, suggestions: List[dict], inline_count: int, included_chunks=None) -> str:
+    def _format_summary(self, suggestions: List[dict], inline_count: int, included_chunks=None, command_quote: str = "") -> str:
         """Format summary when inline comments are posted."""
         if not suggestions:
             return f"## 🌗 Kimi Code Suggestions\n\n✅ **Code quality is good!**\n\n{self.format_footer()}"
 
-        lines = ["## 🌗 Kimi Code Suggestions\n"]
+        lines = []
+        
+        # Add command quote if provided
+        if command_quote:
+            lines.append(f"> {command_quote}")
+            lines.append("")
+        
+        lines.append("## 🌗 Kimi Code Suggestions\n")
         
         severity_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
