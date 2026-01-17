@@ -149,6 +149,7 @@ Branch: {pr_branch}
 1. Analyze the code changes carefully
 2. If needed, read related files to understand context
 3. Identify bugs, security issues, and improvements
+4. **IMPORTANT**: Generate a meaningful description for EVERY changed file in file_summaries
 
 Please output review results in YAML format:
 ```yaml
@@ -156,7 +157,9 @@ summary: "Brief summary of the PR"
 score: 85
 file_summaries:
   - file: "path/to/file.py"
-    description: "What changed in this file"
+    description: "Detailed description of what changed in this file and why"
+  - file: "path/to/another.js"
+    description: "Detailed description of changes in this file"
 suggestions:
   - relevant_file: "path/to/file.py"
     language: "python"
@@ -169,6 +172,8 @@ suggestions:
     relevant_lines_start: 10
     relevant_lines_end: 15
 ```
+
+**Note**: Ensure file_summaries includes ALL changed files with meaningful descriptions, not just generic "Code changes" text.
 """
 
         try:
@@ -291,10 +296,18 @@ suggestions:
                 if chunk.filename in file_summaries:
                     desc = file_summaries[chunk.filename]
                 else:
-                    change_desc = {"added": "New file", "deleted": "File removed", 
-                                   "modified": "Code changes", "renamed": "File renamed"
-                    }.get(chunk.change_type, "Code changes")
-                    desc = f"{change_desc} ({chunk.language})" if chunk.language else change_desc
+                    # Generate more meaningful default descriptions
+                    change_type_desc = {
+                        "added": "New file added",
+                        "deleted": "File removed",
+                        "modified": "Modified",
+                        "renamed": "File renamed"
+                    }.get(chunk.change_type, "Modified")
+                    
+                    # Add language info if available
+                    lang_info = f" ({chunk.language})" if chunk.language else ""
+                    desc = f"{change_type_desc}{lang_info}"
+                
                 lines.append(f"| `{chunk.filename}` | {desc} |")
             lines.append("\n</details>\n")
 

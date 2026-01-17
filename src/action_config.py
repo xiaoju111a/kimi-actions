@@ -56,7 +56,7 @@ class ActionConfig:
     # General settings
     language: str = "en-US"  # zh-CN or en-US
     review_level: str = "normal"  # strict, normal, gentle
-    max_files: int = 10
+    max_files: int = 50
     max_tokens: int = 100000
 
     # File filtering
@@ -94,7 +94,7 @@ class ActionConfig:
         config.language = os.environ.get("INPUT_LANGUAGE", "en-US")
         config.model = os.environ.get("INPUT_MODEL", "kimi-k2-thinking")
         config.review_level = os.environ.get("INPUT_REVIEW_LEVEL", "normal")
-        config.max_files = int(os.environ.get("INPUT_MAX_FILES", "10"))
+        config.max_files = int(os.environ.get("INPUT_MAX_FILES", "50"))
 
         # Exclude patterns
         exclude_str = os.environ.get("INPUT_EXCLUDE_PATTERNS", "")

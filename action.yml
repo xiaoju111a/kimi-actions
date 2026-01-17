@@ -27,7 +27,7 @@ inputs:
   max_files:
     description: 'Maximum number of files to review'
     required: false
-    default: '10'
+    default: '50'
   exclude_patterns:
     description: 'File patterns to exclude (comma-separated)'
     required: false
