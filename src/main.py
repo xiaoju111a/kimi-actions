@@ -251,13 +251,35 @@ def handle_comment_event(event: dict, config: ActionConfig):
             if not args:
                 result = "❌ Please provide a question, e.g.: `/ask What does this function do?`"
             else:
-                ask = Ask(github)
-                result = ask.run(repo_name, pr_number, question=args, inline=False)
+                # Check if this is a reply to a review comment (inline comment thread)
+                comment_id = comment.get("id")
+                review_context = github.get_review_comment_context(repo_name, pr_number, comment_id)
                 
-                # Add a note if this seems to be in a conversation thread
-                # (heuristic: if the comment body contains quoted text)
-                if ">" in comment_body:
-                    result += "\n\n💡 **Tip**: For code-specific questions, use `/ask` directly in the **Files changed** tab by clicking the **+** button next to the line of code."
+                if review_context:
+                    # This is a reply in a review comment thread - we have code context!
+                    file_path = review_context.get("path", "")
+                    line = review_context.get("line", 0)
+                    diff_hunk = review_context.get("diff_hunk", "")
+                    
+                    # Extract relevant code lines from diff_hunk
+                    hunk_lines = diff_hunk.strip().split('\n')
+                    relevant_lines = [line for line in hunk_lines if not line.startswith('@@')][-5:]
+                    code_context = '\n'.join(relevant_lines)
+                    
+                    # Add code context to the question
+                    context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{code_context}\n```\n\n{args}"
+                    
+                    ask = Ask(github)
+                    result = ask.run(repo_name, pr_number, question=context_question, inline=True)
+                else:
+                    # Regular PR comment without code context
+                    ask = Ask(github)
+                    result = ask.run(repo_name, pr_number, question=args, inline=False)
+                    
+                    # Add a note if this seems to be in a conversation thread
+                    # (heuristic: if the comment body contains quoted text)
+                    if ">" in comment_body:
+                        result += "\n\n💡 **Tip**: For code-specific questions, use `/ask` directly in the **Files changed** tab by clicking the **+** button next to the line of code."
 
         elif command == "labels" or command == "label":
             labels_tool = Labels(github)

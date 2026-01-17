@@ -93,7 +93,11 @@ class GitHubClient:
             raise
 
     def get_review_comment_context(self, repo_name: str, pr_number: int, comment_id: int) -> Optional[Dict[str, Any]]:
-        """Get context information for a review comment (inline comment).
+        """Get context information for a review comment or a reply to review comment.
+        
+        This handles both:
+        1. Direct review comments (pull_request_review_comment event)
+        2. Replies to review comments (issue_comment event)
         
         Returns dict with:
         - path: File path
@@ -106,44 +110,55 @@ class GitHubClient:
             repo = self.client.get_repo(repo_name)
             pr = self.get_pr(repo_name, pr_number)
             
-            # Get all review comments
-            for comment in pr.get_review_comments():
-                if comment.id == comment_id:
+            # First, check if this comment_id is a review comment
+            for review_comment in pr.get_review_comments():
+                if review_comment.id == comment_id:
                     return {
-                        "path": comment.path,
-                        "line": comment.line or comment.original_line,
-                        "diff_hunk": comment.diff_hunk,
-                        "body": comment.body,
-                        "in_reply_to_id": comment.in_reply_to_id
+                        "path": review_comment.path,
+                        "line": review_comment.line or review_comment.original_line,
+                        "diff_hunk": review_comment.diff_hunk,
+                        "body": review_comment.body,
+                        "in_reply_to_id": review_comment.in_reply_to_id
                     }
-                
-                # Check if this comment_id is a reply to this review comment
-                # GitHub API doesn't directly expose replies, so we need to check in_reply_to_id
-                # For conversation comments (issue_comment), we need to check differently
             
-            # If not found in review comments, it might be a conversation comment
-            # Try to find the parent review comment by checking issue comments
+            # If not found, this might be an issue comment that's a reply to a review comment
+            # GitHub's API doesn't directly expose the parent review comment for issue comments
+            # We need to check if this is a conversation reply by looking at the comment HTML URL
             issue = repo.get_issue(pr_number)
+            target_comment = None
             for issue_comment in issue.get_comments():
                 if issue_comment.id == comment_id:
-                    # This is a conversation comment, try to find parent review comment
-                    # Check if there's a parent review comment in the thread
-                    # We need to look at all review comments to find the context
-                    for review_comment in pr.get_review_comments():
-                        # If this conversation comment is in the same thread
-                        # We can use the review comment's context
-                        # This is a heuristic - we return the first review comment we find
-                        # In practice, we should check timestamps or thread relationships
+                    target_comment = issue_comment
+                    break
+            
+            if not target_comment:
+                logger.warning(f"Could not find comment {comment_id}")
+                return None
+            
+            # Check if the comment URL indicates it's a review comment thread
+            # Review comment URLs look like: .../pull/123#discussion_r456789
+            # Issue comment URLs look like: .../pull/123#issuecomment-456789
+            html_url = target_comment.html_url
+            
+            if "#discussion_r" in html_url:
+                # This is a reply in a review comment thread
+                # Extract the discussion ID
+                discussion_id = html_url.split("#discussion_r")[-1]
+                
+                # Find the parent review comment by matching the discussion thread
+                # The parent review comment will have the same discussion ID in its URL
+                for review_comment in pr.get_review_comments():
+                    if f"discussion_r{discussion_id}" in review_comment.html_url or str(review_comment.id) == discussion_id:
                         return {
                             "path": review_comment.path,
                             "line": review_comment.line or review_comment.original_line,
                             "diff_hunk": review_comment.diff_hunk,
-                            "body": issue_comment.body,
-                            "in_reply_to_id": None,
+                            "body": target_comment.body,
+                            "in_reply_to_id": review_comment.id,
                             "is_conversation_reply": True
                         }
             
-            logger.warning(f"Could not find review comment context for comment_id {comment_id}")
+            logger.warning(f"Comment {comment_id} is not a review comment or reply to review comment")
             return None
             
         except GithubException as e:
