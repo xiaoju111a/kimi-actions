@@ -323,24 +323,10 @@ suggestions: []
 
 
 class TestReviewerScripts:
-    """Test script execution."""
-    
-    def test_run_scripts_no_scripts(self, mock_action_config):
-        """Test running with no scripts."""
-        from tools.reviewer import Reviewer
-        
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-        
-        skill = Mock()
-        skill.scripts = {}
-        
-        output = reviewer._run_scripts(skill, "diff content")
-        
-        assert output == ""
+    """Test system prompt building."""
     
     def test_build_system_prompt(self, mock_action_config):
-        """Test system prompt building."""
+        """Test system prompt building without script output."""
         from tools.reviewer import Reviewer
         
         github = MockGitHubClient()
@@ -349,27 +335,12 @@ class TestReviewerScripts:
         skill = Mock()
         skill.instructions = "Review the code carefully"
         
-        prompt = reviewer._build_system_prompt(skill, "", "diff")
+        prompt = reviewer._build_system_prompt(skill)
         
         assert "Review the code carefully" in prompt
         assert "Review Level" in prompt
-    
-    def test_detect_language(self, mock_action_config):
-        """Test language detection."""
-        from tools.reviewer import Reviewer
-        
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-        
-        # Test Python
-        diff = "def hello():\n    pass"
-        lang = reviewer._detect_language(diff)
-        assert lang == "python"
-        
-        # Test JavaScript
-        diff = "const x = 1;\nfunction test() {}"
-        lang = reviewer._detect_language(diff)
-        assert lang == "javascript"
+        # Agent SDK will call scripts automatically, so no script output in prompt
+        assert "Automated Check Results" not in prompt
 
 
 class TestReviewerIntegration:

@@ -2,14 +2,16 @@
 
 Each skill is a folder containing:
 - SKILL.md (required) - Main instructions with YAML frontmatter
-- scripts/ (optional) - Executable scripts
+- scripts/ (optional) - Executable scripts (called by Agent SDK)
 - references/ (optional) - Reference documents
+
+Note: Scripts are no longer executed manually. Agent SDK will call them
+automatically when skills_dir is provided.
 """
 
 import re
 import yaml
 import logging
-import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
@@ -18,10 +20,6 @@ logger = logging.getLogger(__name__)
 
 # Built-in skills directory
 SKILLS_DIR = Path(__file__).parent / "skills"
-
-# Script execution constants
-SCRIPT_TIMEOUT_SECONDS: int = 30
-SCRIPT_INTERPRETER: str = "python3"
 
 
 @dataclass
@@ -32,9 +30,10 @@ class Skill:
     version: str = "1.0.0"
     triggers: List[str] = field(default_factory=list)
     instructions: str = ""
-    scripts: Dict[str, Path] = field(default_factory=dict)
+    scripts: Dict[str, Path] = field(default_factory=dict)  # Keep for checking if scripts exist
     references: Dict[str, str] = field(default_factory=dict)
     path: Optional[Path] = None
+    skill_dir: Optional[Path] = None  # Directory containing skill scripts for Agent SDK
 
     def matches(self, text: str) -> bool:
         """Check if text matches this skill's triggers."""
@@ -42,53 +41,6 @@ class Skill:
         if self.name.lower() in text_lower:
             return True
         return any(t.lower() in text_lower for t in self.triggers)
-
-    def run_script(self, script_name: str, **kwargs: Any) -> Optional[str]:
-        """Run a script and return output.
-        
-        Args:
-            script_name: Name of the script to run
-            **kwargs: Arguments to pass to the script
-            
-        Returns:
-            Script stdout on success, stderr on failure, None if script not found
-        """
-        script_path = self.scripts.get(script_name)
-        if not script_path or not script_path.exists():
-            logger.debug(f"Script not found: {script_name}")
-            return None
-
-        try:
-            cmd = [SCRIPT_INTERPRETER, str(script_path)]
-            for key, value in kwargs.items():
-                cmd.extend([f"--{key}", str(value)])
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=SCRIPT_TIMEOUT_SECONDS,
-                check=False  # Don't raise on non-zero exit
-            )
-            
-            if result.returncode == 0:
-                return result.stdout
-            else:
-                logger.warning(
-                    f"Script {script_name} exited with code {result.returncode}: "
-                    f"{result.stderr[:200] if result.stderr else 'no error output'}"
-                )
-                return result.stderr
-                
-        except subprocess.TimeoutExpired:
-            logger.error(f"Script {script_name} timed out after {SCRIPT_TIMEOUT_SECONDS}s")
-            return None
-        except FileNotFoundError:
-            logger.error(f"Interpreter not found: {SCRIPT_INTERPRETER}")
-            return None
-        except Exception as e:
-            logger.warning(f"Script {script_name} failed: {e}")
-            return None
 
     def get_reference(self, ref_name: str) -> str:
         """Get a reference document content."""
@@ -145,6 +97,8 @@ def load_skill_from_dir(skill_dir: Path) -> Optional[Skill]:
         if scripts_dir.exists():
             for script_file in scripts_dir.glob("*.py"):
                 skill.scripts[script_file.stem] = script_file
+            # Set skill_dir for Agent SDK if scripts exist
+            skill.skill_dir = scripts_dir
 
         # Load references
         refs_dir = skill_dir / "references"

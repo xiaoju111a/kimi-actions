@@ -82,7 +82,6 @@ class Ask(BaseTool):
         if not api_key:
             return "KIMI_API_KEY is required."
 
-
         text_parts = []
 
         ask_prompt = f"""{skill_instructions}
@@ -105,11 +104,15 @@ Be concise and helpful.
 """
 
         try:
+            # Use auto-detected skills_dir from BaseTool
+            skills_path = self.get_skills_dir()
+            
             async with await Session.create(
                 work_dir=work_dir,
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
+                skills_dir=skills_path,
             ) as session:
                 async for msg in session.prompt(ask_prompt):
                     if isinstance(msg, TextPart):
@@ -117,6 +120,8 @@ Be concise and helpful.
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
 
+            if skills_path:
+                logger.info(f"Ask used skills from: {skills_path}")
             return "".join(text_parts)
 
         except Exception as e:

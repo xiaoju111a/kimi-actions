@@ -8,12 +8,15 @@ Provides common functionality for all tools:
 
 import logging
 import os
+import subprocess
+import yaml
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional, Tuple, List
 
 from action_config import get_action_config
 from github_client import GitHubClient
-from token_handler import TokenHandler, DiffChunker, select_model_for_diff, DiffChunk
+from diff_chunker import DiffChunker, DiffChunk
 from skill_loader import SkillManager, Skill
 from repo_config import load_repo_config, RepoConfig
 
@@ -38,19 +41,15 @@ class BaseTool(ABC):
         self.github = github
         self.config = get_action_config()
 
-        # Token handling
-        self.token_handler = TokenHandler(self.config.model)
+        # Diff chunking
         self.chunker = DiffChunker(
-            self.token_handler,
+            max_tokens=DIFF_LIMIT_REVIEW,
             exclude_patterns=self.config.exclude_patterns
         )
 
         # Skill management
         self.skill_manager = SkillManager()
         self.repo_config: Optional[RepoConfig] = None
-
-        # Track actual model used (may change due to fallback)
-        self.actual_model: str = self.config.model
 
     @property
     @abstractmethod
@@ -99,24 +98,19 @@ class BaseTool(ABC):
         if not diff:
             return "", [], []
 
-        self.actual_model, estimated_tokens = select_model_for_diff(diff, self.config.model)
-
-        if self.actual_model != self.config.model:
-            logger.info(f"Using fallback model: {self.actual_model}")
-
         included, excluded = self.chunker.chunk_diff(diff, max_files=self.config.max_files)
         compressed = self.chunker.build_diff_string(included)
 
+        total_tokens = sum(chunk.tokens for chunk in included)
         logger.info(
             f"Diff processed: {len(included)} files included, "
-            f"{len(excluded)} excluded, ~{estimated_tokens} tokens"
+            f"{len(excluded)} excluded, ~{total_tokens} tokens"
         )
 
         return compressed, included, excluded
 
     def format_footer(self, extra_info: str = "") -> str:
         """Generate standard footer for tool output."""
-        # Use AGENT_MODEL for Agent SDK based tools
         model_info = f"`{self.AGENT_MODEL}`"
 
         footer = f"---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: {model_info}"
@@ -157,8 +151,6 @@ class BaseTool(ABC):
         Returns:
             Parsed dict or None if parsing fails.
         """
-        import yaml
-        
         try:
             yaml_content = response
             if "```yaml" in response:
@@ -181,8 +173,6 @@ class BaseTool(ABC):
         Returns:
             True if clone succeeded, False otherwise
         """
-        import subprocess
-        
         clone_url = f"https://github.com/{repo_name}.git"
         
         try:
@@ -191,12 +181,14 @@ class BaseTool(ABC):
                     ["git", "clone", "--depth", "1", "-b", branch, clone_url, work_dir],
                     check=True, capture_output=True
                 )
-            else:
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", clone_url, work_dir],
-                    check=True, capture_output=True
-                )
-            logger.info(f"Successfully cloned {repo_name}" + (f" (branch: {branch})" if branch else ""))
+                logger.info(f"Successfully cloned {repo_name} (branch: {branch})")
+                return True
+            
+            subprocess.run(
+                ["git", "clone", "--depth", "1", clone_url, work_dir],
+                check=True, capture_output=True
+            )
+            logger.info(f"Successfully cloned {repo_name}")
             return True
         except subprocess.CalledProcessError as e:
             if branch:
@@ -212,16 +204,28 @@ class BaseTool(ABC):
                 except subprocess.CalledProcessError:
                     logger.error(f"Failed to clone {repo_name}: {e}")
                     return False
-            else:
-                logger.error(f"Failed to clone {repo_name}: {e}")
-                return False
+            
+            logger.error(f"Failed to clone {repo_name}: {e}")
+            return False
 
-    async def run_agent(self, work_dir: str, prompt: str) -> str:
+    def get_skills_dir(self) -> Optional[Path]:
+        """Get skills directory from current skill.
+        
+        Returns:
+            Path to skills directory if skill has scripts, None otherwise
+        """
+        skill = self.get_skill()
+        if skill and skill.skill_dir:
+            return Path(skill.skill_dir)
+        return None
+
+    async def run_agent(self, work_dir: str, prompt: str, skills_dir: Optional[str] = None) -> str:
         """Run agent with standard configuration.
         
         Args:
             work_dir: Working directory for agent
             prompt: Prompt to send to agent
+            skills_dir: Optional path to skills directory. If None, auto-detects from current skill.
             
         Returns:
             Agent response text
@@ -237,6 +241,12 @@ class BaseTool(ABC):
             logger.error("KIMI_API_KEY not found")
             return ""
 
+        # Auto-detect skills_dir from current skill if not provided
+        if skills_dir is None:
+            skills_path = self.get_skills_dir()
+        else:
+            skills_path = Path(skills_dir) if skills_dir else None
+
         text_parts = []
         try:
             async with await Session.create(
@@ -244,6 +254,7 @@ class BaseTool(ABC):
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
+                skills_dir=skills_path,
             ) as session:
                 async for msg in session.prompt(prompt):
                     if isinstance(msg, TextPart):
@@ -253,6 +264,8 @@ class BaseTool(ABC):
             
             response = "".join(text_parts)
             logger.info(f"Agent completed successfully, response length: {len(response)}")
+            if skills_path:
+                logger.info(f"Agent used skills from: {skills_path}")
             return response
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
