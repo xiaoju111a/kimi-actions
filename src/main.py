@@ -253,7 +253,13 @@ def handle_comment_event(event: dict, config: ActionConfig):
             else:
                 # Check if this is a reply to a review comment (inline comment thread)
                 comment_id = comment.get("id")
-                review_context = github.get_review_comment_context(repo_name, pr_number, comment_id)
+                review_context = None
+                
+                try:
+                    review_context = github.get_review_comment_context(repo_name, pr_number, comment_id)
+                except Exception as e:
+                    logger.warning(f"Failed to get review comment context: {e}")
+                    review_context = None
                 
                 if review_context:
                     # This is a reply in a review comment thread - we have code context!
