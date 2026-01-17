@@ -144,7 +144,7 @@ jobs:
         with:
           ref: ${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && steps.get-pr.outputs.ref || github.head_ref }}
 
-      - uses: xiaoju111a/kimi-actions@v1
+      - uses: xiaoju111a/kimi-actions@main
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -161,7 +161,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: xiaoju111a/kimi-actions@v1
+      - uses: xiaoju111a/kimi-actions@main
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -200,7 +200,7 @@ Use these commands in Issue comments:
 ### Action Inputs
 
 ```yaml
-- uses: xiaoju111a/kimi-actions@v1
+- uses: xiaoju111a/kimi-actions@main
   with:
     # Required
     kimi_api_key: ${{ secrets.KIMI_API_KEY }}
