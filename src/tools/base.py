@@ -134,8 +134,11 @@ class BaseTool(ABC):
         if not api_key:
             return None
         
+        # Get base URL from config or environment
+        base_url = self.config.kimi_base_url or os.environ.get("KIMI_BASE_URL") or self.AGENT_BASE_URL
+        
         os.environ["KIMI_API_KEY"] = api_key
-        os.environ["KIMI_BASE_URL"] = self.AGENT_BASE_URL
+        os.environ["KIMI_BASE_URL"] = base_url
         os.environ["KIMI_MODEL_NAME"] = self.AGENT_MODEL
         return api_key
 

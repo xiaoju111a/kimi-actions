@@ -50,6 +50,7 @@ class ActionConfig:
     """
     # API settings
     kimi_api_key: str = ""
+    kimi_base_url: str = "https://api.moonshot.cn/v1"
     github_token: str = ""
     model: str = "kimi-k2-thinking"
 
@@ -88,6 +89,7 @@ class ActionConfig:
 
         # API keys (from GitHub Actions inputs)
         config.kimi_api_key = os.environ.get("INPUT_KIMI_API_KEY", "")
+        config.kimi_base_url = os.environ.get("INPUT_KIMI_BASE_URL", "https://api.moonshot.cn/v1")
         config.github_token = os.environ.get("INPUT_GITHUB_TOKEN", "")
 
         # General settings

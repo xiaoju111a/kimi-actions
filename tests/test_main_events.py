@@ -53,6 +53,7 @@ class TestHandleReviewCommentEvent:
         config = Mock(spec=ActionConfig)
         config.github_token = "test_token"
         config.kimi_api_key = "test_key"
+        config.kimi_base_url = "https://api.moonshot.cn/v1"
         return config
 
     @pytest.fixture

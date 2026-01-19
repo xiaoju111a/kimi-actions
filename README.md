@@ -101,6 +101,7 @@
 2. Click `Settings` → `Secrets and variables` → `Actions`
 3. Click `New repository secret`
 4. Add `KIMI_API_KEY` with the API Key from step 1
+5. (Optional) Add `KIMI_BASE_URL` if using a custom API endpoint (defaults to `https://api.moonshot.cn/v1`)
 
 ### 3. Create Workflow File
 
@@ -157,6 +158,7 @@ jobs:
       - uses: xiaoju111a/kimi-actions@main
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
+          kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Optional
           github_token: ${{ secrets.GITHUB_TOKEN }}
           auto_review: 'false'
 
@@ -174,6 +176,7 @@ jobs:
       - uses: xiaoju111a/kimi-actions@main
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
+          kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Optional
           github_token: ${{ secrets.GITHUB_TOKEN }}
           auto_triage: 'false'
 ```
@@ -221,6 +224,7 @@ Use these commands in Issue comments:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     
     # Optional
+    kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Custom API endpoint (optional, defaults to https://api.moonshot.cn/v1)
     language: 'en-US'               # Response language: zh-CN, en-US
     model: 'kimi-k2-thinking'       # Kimi model (default: kimi-k2-thinking)
     review_level: 'normal'          # Review strictness: strict, normal, gentle
@@ -414,6 +418,32 @@ Example flow:
 ### Q: How to customize review rules?
 
 Create `.kimi-config.yml` in your repo root, or add custom Skills in `.kimi/skills/` directory. See Configuration section above.
+
+### Q: How to use a custom API endpoint?
+
+If you're using a proxy or custom Kimi API endpoint, add `KIMI_BASE_URL` to your repository secrets:
+
+1. Go to `Settings` → `Secrets and variables` → `Actions`
+2. Click `New repository secret`
+3. Add `KIMI_BASE_URL` with your custom endpoint (e.g., `https://your-proxy.example.com/v1`)
+
+Then use it in your workflow:
+
+```yaml
+- uses: xiaoju111a/kimi-actions@main
+  with:
+    kimi_api_key: ${{ secrets.KIMI_API_KEY }}
+    kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Custom endpoint from secrets
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Note:** If `KIMI_BASE_URL` is not set, it defaults to `https://api.moonshot.cn/v1`.
+
+This is useful for:
+- Using a corporate proxy
+- Testing with a local development server
+- Using alternative API gateways
+- Keeping endpoint URLs private
 
 ## Acknowledgments
 

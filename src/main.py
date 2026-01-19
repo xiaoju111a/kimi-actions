@@ -225,11 +225,15 @@ def handle_comment_event(event: dict, config: ActionConfig):
             reviewer = Reviewer(github)
             # Check for flags
             incremental = "--incremental" in args or "-i" in args
-            # Build command string for quote
+            # Build command string for quote (reviewer will add it to the result)
             original_command = "/review"
             if args:
                 original_command += f" {args}"
             result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=True, command_quote=original_command)
+            # Don't add quote again - reviewer already includes it
+            if result:
+                github.post_comment(repo_name, pr_number, result)
+                result = None  # Prevent double posting below
 
         elif command == "describe":
             describe = Describe(github)
@@ -241,11 +245,15 @@ def handle_comment_event(event: dict, config: ActionConfig):
 
         elif command == "improve":
             improve = Improve(github)
-            # Build command string for quote
+            # Build command string for quote (improve will add it to the result)
             original_command = "/improve"
             if args:
                 original_command += f" {args}"
             result = improve.run(repo_name, pr_number, inline=True, command_quote=original_command)
+            # Don't add quote again - improve already includes it
+            if result:
+                github.post_comment(repo_name, pr_number, result)
+                result = None  # Prevent double posting below
 
         elif command == "ask":
             if not args:

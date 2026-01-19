@@ -9,6 +9,10 @@ inputs:
   kimi_api_key:
     description: 'Kimi API Key from Moonshot AI'
     required: true
+  kimi_base_url:
+    description: 'Kimi API Base URL (optional, defaults to https://api.moonshot.cn/v1)'
+    required: false
+    default: 'https://api.moonshot.cn/v1'
   github_token:
     description: 'GitHub Token for PR operations'
     required: true

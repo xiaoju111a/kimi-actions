@@ -68,6 +68,7 @@ def mock_action_config():
     with patch('tools.base.get_action_config') as mock:
         config = Mock()
         config.model = "kimi-k2-thinking"
+        config.kimi_base_url = "https://api.moonshot.cn/v1"
         config.review_level = "normal"
         config.max_files = 10
         config.exclude_patterns = ["*.lock"]
