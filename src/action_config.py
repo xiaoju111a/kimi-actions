@@ -20,7 +20,7 @@ class ReviewConfig:
     require_security_review: bool = True
     require_tests_review: bool = True
     require_score: bool = True
-    num_max_findings: int = 5
+    num_max_findings: int = 20
     extra_instructions: str = ""
 
 
@@ -36,7 +36,7 @@ class DescribeConfig:
 @dataclass
 class ImproveConfig:
     """Improve tool configuration."""
-    num_suggestions: int = 5
+    num_suggestions: int = 20
     focus_on_problems: bool = True
     include_line_numbers: bool = True
     extra_instructions: str = ""

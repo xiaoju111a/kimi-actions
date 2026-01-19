@@ -40,5 +40,5 @@ class ReviewOptions:
 @dataclass
 class SuggestionControl:
     """Suggestion control configuration."""
-    max_suggestions: int = 9
+    max_suggestions: int = 20
     severity_level_filter: SeverityLevel = SeverityLevel.MEDIUM
