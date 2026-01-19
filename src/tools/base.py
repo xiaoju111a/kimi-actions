@@ -158,8 +158,12 @@ class BaseTool(ABC):
             elif "```" in response:
                 yaml_content = response.split("```")[1].split("```")[0]
             
-            return yaml.safe_load(yaml_content)
-        except Exception:
+            parsed = yaml.safe_load(yaml_content)
+            if parsed is None:
+                logger.warning(f"YAML parsing returned None. Response preview: {response[:500]}")
+            return parsed
+        except Exception as e:
+            logger.warning(f"YAML parsing failed: {e}. Response preview: {response[:500]}")
             return None
 
     def clone_repo(self, repo_name: str, work_dir: str, branch: str = None) -> bool:
