@@ -131,7 +131,12 @@ Branch: {pr_branch}
 1. Analyze the code changes carefully
 2. If needed, read related files to understand context
 3. Identify bugs, security issues, and improvements
-4. **IMPORTANT**: Generate a meaningful description for EVERY changed file in file_summaries
+4. **CRITICAL**: For file_summaries, provide SPECIFIC descriptions based on actual code changes:
+   - ❌ NEVER use: "New file added", "Modified", "Code changes", or generic descriptions
+   - ✅ ALWAYS describe WHAT the code does: "Added JWT authentication with token validation"
+   - ✅ Be specific: "Refactored database queries to use connection pooling"
+   - ✅ Mention key functionality: "Fixed memory leak in image processing by closing file handles"
+   - Read the diff and describe the actual functionality added/modified in each file
 
 Please output review results in YAML format:
 ```yaml
@@ -139,9 +144,9 @@ summary: "Brief summary of the PR"
 score: 85
 file_summaries:
   - file: "path/to/file.py"
-    description: "Detailed description of what changed in this file and why"
+    description: "Specific description of functionality added/modified (NOT 'New file' or 'Modified')"
   - file: "path/to/another.js"
-    description: "Detailed description of changes in this file"
+    description: "Specific description of what this file does or changes"
 suggestions:
   - relevant_file: "path/to/file.py"
     language: "python"
@@ -155,7 +160,7 @@ suggestions:
     relevant_lines_end: 15
 ```
 
-**Note**: Ensure file_summaries includes ALL changed files with meaningful descriptions, not just generic "Code changes" text.
+**CRITICAL**: Every file in file_summaries MUST have a unique, meaningful description that explains what functionality was added or modified. Generic descriptions like "New file added" or "Modified" are NOT acceptable.
 """
 
         try:
