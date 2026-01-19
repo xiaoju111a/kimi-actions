@@ -221,8 +221,8 @@ class TestSuggestionService:
                 id="2",
                 relevant_file="main.py",
                 language="python",
-                relevant_lines_start=1,
-                relevant_lines_end=5,
+                relevant_lines_start=10,
+                relevant_lines_end=12,
                 suggestion_content="Fix",
                 existing_code="nonexistent_code()",
                 improved_code="",
@@ -234,13 +234,18 @@ class TestSuggestionService:
 
         patch = """--- a/main.py
 +++ b/main.py
+@@ -1,5 +1,5 @@
 +old_function()
--something"""
+-something
+ context_line
++another_line
+ more_context"""
         valid = service._validate_against_diff(suggestions, patch)
 
-        # Relaxed validation: both pass because file is in diff
-        assert len(valid) == 2
-        assert all(s.relevant_file == "main.py" for s in valid)
+        # Strict validation: only first suggestion passes (lines 1-5 are in diff)
+        assert len(valid) == 1
+        assert valid[0].id == "1"
+        assert valid[0].relevant_file == "main.py"
 
     def test_validate_against_diff_no_existing_code(self, service):
         suggestions = [
@@ -261,9 +266,14 @@ class TestSuggestionService:
 
         patch = """--- a/main.py
 +++ b/main.py
-any patch content"""
+@@ -1,3 +1,6 @@
++new line 1
++new line 2
+ context line
++new line 4
+ another context"""
         valid = service._validate_against_diff(suggestions, patch)
-        assert len(valid) == 1  # Should be kept
+        assert len(valid) == 1  # Should be kept (lines 1-5 are in diff)
 
     def test_validate_against_diff_custom_format(self, service):
         """Test validation with custom ## File: format used by DiffChunker."""
@@ -272,8 +282,8 @@ any patch content"""
                 id="1",
                 relevant_file="src/utils/data_processor.py",
                 language="python",
-                relevant_lines_start=10,
-                relevant_lines_end=15,
+                relevant_lines_start=1,
+                relevant_lines_end=3,
                 suggestion_content="Fix thread safety",
                 existing_code="",
                 improved_code="",
@@ -284,6 +294,7 @@ any patch content"""
         ]
 
         patch = """## File: src/utils/data_processor.py (python) [added]
+@@ -0,0 +1,3 @@
 +class DataProcessor:
 +    def process(self):
 +        pass"""

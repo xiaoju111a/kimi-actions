@@ -59,37 +59,100 @@ class SuggestionService:
         return [s for s in suggestions if category_map.get(s.label.lower(), True)]
 
     def _validate_against_diff(self, suggestions: List[CodeSuggestion], patch: str) -> List[CodeSuggestion]:
-        """Keep only suggestions whose file is in the diff (relaxed validation)."""
+        """Keep only suggestions whose file AND line numbers are in the diff (strict validation)."""
         import logging
+        import re
         logger = logging.getLogger(__name__)
         
-        # Extract files from diff - support multiple formats
+        # Extract files and valid line numbers from diff
         diff_files = set()
+        file_line_map = {}  # file -> set of valid line numbers
+        
+        current_file = None
+        current_line = 0
+        
         for line in patch.split('\n'):
             # Standard git diff format
-            if line.startswith('+++ b/') or line.startswith('--- a/'):
+            if line.startswith('+++ b/'):
+                file_path = line.split('/', 1)[-1] if '/' in line else line[6:]
+                current_file = file_path.strip()
+                diff_files.add(current_file)
+                file_line_map[current_file] = set()
+            elif line.startswith('--- a/'):
                 file_path = line.split('/', 1)[-1] if '/' in line else line[6:]
                 diff_files.add(file_path.strip())
             # Custom format: ## File: path/to/file.py
             elif line.startswith('## File: '):
                 file_path = line[9:].split(' (')[0].split(' [')[0].strip()
-                diff_files.add(file_path)
+                current_file = file_path
+                diff_files.add(current_file)
+                file_line_map[current_file] = set()
+            # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+            elif line.startswith('@@'):
+                hunk_match = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@', line)
+                if hunk_match and current_file:
+                    current_line = int(hunk_match.group(1))
+            # Track line numbers in the new file
+            elif current_file and current_file in file_line_map:
+                if line.startswith('-'):
+                    # Deleted line, don't increment
+                    continue
+                elif line.startswith('+') or (not line.startswith('\\') and current_line > 0):
+                    # Added or context line
+                    file_line_map[current_file].add(current_line)
+                    current_line += 1
         
         logger.debug(f"Files in diff: {diff_files}")
+        logger.debug(f"Line map: {[(f, len(lines)) for f, lines in file_line_map.items()]}")
 
         valid = []
         for s in suggestions:
-            # Relaxed validation: just check if file is in diff
+            # Strict validation: check file AND line numbers
             if not s.relevant_file:
                 logger.debug(f"Suggestion has no file, keeping: {s.one_sentence_summary[:50]}")
                 valid.append(s)
-            elif s.relevant_file in diff_files or any(s.relevant_file.endswith(f) or f.endswith(s.relevant_file) for f in diff_files):
-                logger.debug(f"File {s.relevant_file} found in diff, keeping")
-                valid.append(s)
+                continue
+            
+            # Find matching file in diff
+            matched_file = None
+            if s.relevant_file in diff_files:
+                matched_file = s.relevant_file
             else:
+                # Try fuzzy matching
+                for f in diff_files:
+                    if s.relevant_file.endswith(f) or f.endswith(s.relevant_file):
+                        matched_file = f
+                        break
+            
+            if not matched_file:
                 logger.warning(f"File {s.relevant_file} NOT in diff files {diff_files}, discarding")
+                continue
+            
+            # Check if line numbers are in the diff
+            if matched_file in file_line_map:
+                valid_lines = file_line_map[matched_file]
+                start_line = s.relevant_lines_start or 0
+                end_line = s.relevant_lines_end or start_line
+                
+                # Check if any line in the range is in the diff
+                suggestion_lines = set(range(start_line, end_line + 1)) if start_line > 0 else set()
+                
+                if not suggestion_lines:
+                    # No line numbers specified, keep it
+                    logger.debug(f"No line numbers for {s.relevant_file}, keeping")
+                    valid.append(s)
+                elif suggestion_lines & valid_lines:
+                    # At least one line overlaps with diff
+                    logger.debug(f"Lines {start_line}-{end_line} in {s.relevant_file} overlap with diff, keeping")
+                    valid.append(s)
+                else:
+                    logger.warning(f"Lines {start_line}-{end_line} in {s.relevant_file} NOT in diff (valid: {min(valid_lines) if valid_lines else 'none'}-{max(valid_lines) if valid_lines else 'none'}), discarding")
+            else:
+                # No line map for this file (shouldn't happen), keep it to be safe
+                logger.debug(f"No line map for {matched_file}, keeping")
+                valid.append(s)
         
-        logger.info(f"Diff validation: {len(suggestions)} -> {len(valid)} suggestions")
+        logger.info(f"Diff validation (strict): {len(suggestions)} -> {len(valid)} suggestions")
         return valid
 
     def _remove_duplicates(self, suggestions: List[CodeSuggestion]) -> List[CodeSuggestion]:
