@@ -144,7 +144,7 @@ class BaseTool(ABC):
 
     @staticmethod
     def parse_yaml_response(response: str) -> Optional[dict]:
-        """Parse YAML from LLM response.
+        """Parse YAML from LLM response with error recovery.
         
         Handles common formats:
         - ```yaml ... ```
@@ -165,6 +165,48 @@ class BaseTool(ABC):
             if parsed is None:
                 logger.warning(f"YAML parsing returned None. Response preview: {response[:500]}")
             return parsed
+        except yaml.YAMLError as e:
+            logger.warning(f"YAML parsing failed: {e}. Attempting to extract partial data...")
+            
+            # Try to extract at least summary and file_summaries
+            try:
+                import re
+                result = {}
+                
+                # Extract summary
+                summary_match = re.search(r'summary:\s*["\']?(.*?)["\']?\s*(?:score:|file_summaries:|\n\w+:)', yaml_content, re.DOTALL)
+                if summary_match:
+                    result['summary'] = summary_match.group(1).strip().strip('"\'')
+                
+                # Extract score
+                score_match = re.search(r'score:\s*(\d+)', yaml_content)
+                if score_match:
+                    result['score'] = int(score_match.group(1))
+                
+                # Extract file_summaries (simplified - just get file and description pairs)
+                file_summaries = []
+                file_pattern = r'-\s*file:\s*["\']?(.*?)["\']?\s*description:\s*["\']?(.*?)["\']?\s*(?=-\s*file:|\nsuggestions:|\Z)'
+                for match in re.finditer(file_pattern, yaml_content, re.DOTALL):
+                    file_summaries.append({
+                        'file': match.group(1).strip().strip('"\''),
+                        'description': match.group(2).strip().strip('"\'')
+                    })
+                
+                if file_summaries:
+                    result['file_summaries'] = file_summaries
+                
+                # Always include empty suggestions if parsing failed
+                result['suggestions'] = []
+                
+                if result:
+                    logger.info(f"Extracted partial YAML data: {len(file_summaries)} file summaries")
+                    return result
+                    
+            except Exception as extract_error:
+                logger.error(f"Failed to extract partial data: {extract_error}")
+            
+            logger.warning(f"Complete YAML parsing failure. Response preview: {response[:500]}")
+            return None
         except Exception as e:
             logger.warning(f"YAML parsing failed: {e}. Response preview: {response[:500]}")
             return None

@@ -38,6 +38,36 @@ suggestions:
 5. NO markdown formatting outside YAML
 6. If no issues found: use `suggestions: []` (empty list)
 
+**YAML Generation Helper (RECOMMENDED):**
+You have access to a `generate_yaml.py` script that ensures valid YAML:
+
+```bash
+# Step 1: Build your review data as JSON
+review_data='{
+  "summary": "Your PR summary here",
+  "score": 85,
+  "file_summaries": [
+    {"file": "path/to/file.py", "description": "Specific description of changes"}
+  ],
+  "suggestions": []
+}'
+
+# Step 2: Generate valid YAML
+python scripts/generate_yaml.py generate "$review_data"
+```
+
+**Why use the script?**
+- ✅ Guarantees valid YAML syntax
+- ✅ Handles special characters and quotes correctly
+- ✅ Validates output before returning
+- ✅ Prevents parsing errors
+
+**If you don't use the script:**
+- Be extremely careful with quotes in multiline strings
+- Use `|` for multiline values: `description: |`
+- Escape special characters properly
+- Test your YAML: `python scripts/generate_yaml.py validate "your_yaml"`
+
 **This is not optional. Any response not in pure YAML format will be rejected.**
 
 ---
