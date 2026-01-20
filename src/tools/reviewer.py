@@ -108,7 +108,7 @@ class Reviewer(BaseTool):
         """Run agent to perform code review."""
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
-            from pathlib import Path
+            from kaos.path import KaosPath
         except ImportError:
             return '```yaml\nsuggestions: []\nsummary: "kimi-agent-sdk not installed"\n```'
 
@@ -167,13 +167,14 @@ suggestions:
         try:
             skills_path = self.get_skills_dir()
             
-            # Convert work_dir to Path for Agent SDK
-            work_dir_path = Path(work_dir) if work_dir else None
+            # Convert work_dir string to KaosPath for Agent SDK
+            work_dir_kaos = KaosPath(work_dir) if work_dir else KaosPath.cwd()
+            skills_dir_kaos = KaosPath(skills_path) if skills_path else None
             
             async with await Session.create(
-                work_dir=work_dir_path, model=self.AGENT_MODEL,
+                work_dir=work_dir_kaos, model=self.AGENT_MODEL,
                 yolo=True, max_steps_per_turn=50,
-                skills_dir=skills_path,
+                skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(review_prompt):
                     if isinstance(msg, TextPart):
