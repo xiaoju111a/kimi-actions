@@ -189,12 +189,25 @@ suggestions:
     relevant_lines_end: 15
 ```
 
-**MANDATORY RULES**:
+**CRITICAL RULES**:
 1. Your ENTIRE response = one YAML code block (```yaml ... ```)
 2. No text before or after the YAML block
 3. Every file MUST have a specific, meaningful description
 4. Empty suggestions list if no issues: suggestions: []
 5. For docs: check typos, grammar, examples, links
+
+**EXAMPLES OF GOOD FILE DESCRIPTIONS:**
+- ✅ "Added quickstart guide with Session API usage examples and installation instructions"
+- ✅ "Documented Session.create() method with parameters, return values, and error handling"
+- ✅ "Added prompt() function reference with async/await examples and approval handling"
+
+**EXAMPLES OF BAD FILE DESCRIPTIONS (DO NOT USE):**
+- ❌ "New file added"
+- ❌ "Documentation updated"
+- ❌ "Modified"
+- ❌ "Added documentation"
+
+**FINAL REMINDER**: Read the actual diff content and describe what functionality/documentation each file adds. Be specific!
 """
 
         try:
