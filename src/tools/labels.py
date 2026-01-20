@@ -68,6 +68,7 @@ class Labels(BaseTool):
         """Run agent to suggest labels (no git clone needed)."""
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+            from kaos.path import KaosPath
         except ImportError:
             return '{"labels": [], "reason": "kimi-agent-sdk not installed"}'
 
@@ -103,12 +104,16 @@ Rules:
             # Use auto-detected skills_dir from BaseTool
             skills_path = self.get_skills_dir()
             
+            # Convert to KaosPath for Agent SDK
+            work_dir_kaos = KaosPath("/tmp")
+            skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
+            
             async with await Session.create(
-                work_dir="/tmp",
+                work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
-                skills_dir=skills_path,
+                skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(labels_prompt):
                     if isinstance(msg, TextPart):

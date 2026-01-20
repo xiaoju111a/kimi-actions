@@ -137,6 +137,7 @@ class Triage(BaseTool):
         """Run agent to analyze the issue."""
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+            from kaos.path import KaosPath
         except ImportError:
             return '{"error": "kimi-agent-sdk not installed"}'
 
@@ -188,12 +189,16 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it. Search for rela
             # Use auto-detected skills_dir from BaseTool
             skills_path = self.get_skills_dir()
             
+            # Convert to KaosPath for Agent SDK
+            work_dir_kaos = KaosPath(work_dir) if work_dir else KaosPath.cwd()
+            skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
+            
             async with await Session.create(
-                work_dir=work_dir,
+                work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
-                skills_dir=skills_path,
+                skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(triage_prompt):
                     if isinstance(msg, TextPart):

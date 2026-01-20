@@ -239,6 +239,7 @@ class BaseTool(ABC):
         """
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+            from kaos.path import KaosPath
         except ImportError:
             logger.error("kimi-agent-sdk not installed")
             return ""
@@ -254,14 +255,18 @@ class BaseTool(ABC):
         else:
             skills_path = Path(skills_dir) if skills_dir else None
 
+        # Convert to KaosPath for Agent SDK
+        work_dir_kaos = KaosPath(work_dir) if work_dir else KaosPath.cwd()
+        skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
+
         text_parts = []
         try:
             async with await Session.create(
-                work_dir=work_dir,
+                work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
                 yolo=True,
                 max_steps_per_turn=100,
-                skills_dir=skills_path,
+                skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(prompt):
                     if isinstance(msg, TextPart):
