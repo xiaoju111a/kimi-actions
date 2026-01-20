@@ -128,26 +128,54 @@ Branch: {pr_branch}
 {diff[:DIFF_LIMIT_REVIEW]}
 ```
 
-## Instructions
-1. Analyze the code changes carefully
-2. If needed, read related files to understand context
-3. Identify bugs, security issues, and improvements
-4. **CRITICAL**: For file_summaries, provide SPECIFIC descriptions based on actual code changes:
-   - ❌ NEVER use: "New file added", "Modified", "Code changes", or generic descriptions
-   - ✅ ALWAYS describe WHAT the code does: "Added JWT authentication with token validation"
-   - ✅ Be specific: "Refactored database queries to use connection pooling"
-   - ✅ Mention key functionality: "Fixed memory leak in image processing by closing file handles"
-   - Read the diff and describe the actual functionality added/modified in each file
+## CRITICAL: Output Format Requirement
+**YOU MUST RESPOND ONLY IN YAML FORMAT. NO EXCEPTIONS.**
 
-Please output review results in YAML format:
+Your response must be EXACTLY in this format:
 ```yaml
-summary: "Brief summary of the PR"
+summary: "..."
 score: 85
 file_summaries:
-  - file: "path/to/file.py"
-    description: "Specific description of functionality added/modified (NOT 'New file' or 'Modified')"
-  - file: "path/to/another.js"
-    description: "Specific description of what this file does or changes"
+  - file: "..."
+    description: "..."
+suggestions:
+  - relevant_file: "..."
+    ...
+```
+
+DO NOT:
+- Add any text before the ```yaml block
+- Add any text after the closing ``` 
+- Use natural language or markdown format
+- Write explanations outside the YAML structure
+
+## Review Scope
+Review ALL file types including:
+- **Code files**: Check for bugs, security issues, performance problems
+- **Documentation files (.md)**: Check for typos, grammar, broken links, incorrect code examples
+- **Configuration files**: Check for syntax errors, security issues
+- **Test files**: Check for test coverage and correctness
+
+## Instructions
+1. Analyze ALL changed files (code, docs, config, tests)
+2. For documentation: check spelling, grammar, code examples, links
+3. For code: identify bugs, security issues, and improvements
+4. Read related files if needed to understand context
+5. **CRITICAL**: Provide SPECIFIC file descriptions:
+   - ❌ NEVER: "New file added", "Modified", "Documentation updated"
+   - ✅ ALWAYS: "Added quickstart guide with Session API examples"
+   - ✅ ALWAYS: "Fixed typo in authentication section and updated code samples"
+6. **If no issues found, return empty suggestions list but MUST provide file_summaries**
+
+## Required YAML Output Format
+```yaml
+summary: "Brief summary of the PR (1-2 sentences)"
+score: 85
+file_summaries:
+  - file: "path/to/file.md"
+    description: "Added comprehensive API documentation with usage examples"
+  - file: "path/to/code.py"
+    description: "Implemented user authentication with JWT tokens"
 suggestions:
   - relevant_file: "path/to/file.py"
     language: "python"
@@ -161,7 +189,12 @@ suggestions:
     relevant_lines_end: 15
 ```
 
-**CRITICAL**: Every file in file_summaries MUST have a unique, meaningful description that explains what functionality was added or modified. Generic descriptions like "New file added" or "Modified" are NOT acceptable.
+**MANDATORY RULES**:
+1. Your ENTIRE response = one YAML code block (```yaml ... ```)
+2. No text before or after the YAML block
+3. Every file MUST have a specific, meaningful description
+4. Empty suggestions list if no issues: suggestions: []
+5. For docs: check typos, grammar, examples, links
 """
 
         try:
