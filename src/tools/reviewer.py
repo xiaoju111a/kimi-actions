@@ -276,7 +276,7 @@ suggestions:
                 work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
                 yolo=True,
-                max_steps_per_turn=15,  # Reduced from 50 to minimize tool usage
+                max_steps_per_turn=50,  # Allow sufficient steps for thorough review
                 skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(review_prompt):

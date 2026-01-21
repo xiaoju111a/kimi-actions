@@ -126,7 +126,7 @@ class BaseTool(ABC):
         return footer
 
     # Agent SDK configuration
-    AGENT_MODEL = "kimi-k2-thinking"
+    AGENT_MODEL = "kimi-k2-thinking-turbo"  # Faster version for quicker reviews
     AGENT_BASE_URL = "https://api.moonshot.cn/v1"
 
     def setup_agent_env(self) -> Optional[str]:
