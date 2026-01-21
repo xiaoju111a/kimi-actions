@@ -164,7 +164,10 @@ class Reviewer(BaseTool):
             pr_branch=pr_branch,
             diff=diff,
         )
-        summary_task = self._generate_file_summaries_async(included_chunks, diff)
+        # Pass work_dir to file summaries task to avoid creating separate temp dir
+        summary_task = self._generate_file_summaries_async(
+            work_dir, included_chunks, diff
+        )
 
         # Wait for both to complete in parallel
         review_response, file_summaries = await asyncio.gather(
@@ -770,11 +773,12 @@ Requirements:
             return {}
 
     async def _generate_file_summaries_async(
-        self, chunks: List[DiffChunk], diff: str
+        self, work_dir: str, chunks: List[DiffChunk], diff: str
     ) -> Dict[str, str]:
         """Generate concise descriptions for each changed file using Agent (async version).
 
         This runs in parallel with the main review to save time.
+        Uses the same work_dir as main review to avoid temp directory conflicts.
         """
         if not chunks:
             return {}
@@ -824,37 +828,37 @@ Requirements:
 
         try:
             text_parts = []
-            with tempfile.TemporaryDirectory() as work_dir:
-                work_dir_kaos = KaosPath(work_dir)
+            # Use the same work_dir as main review (no separate temp directory)
+            work_dir_kaos = KaosPath(work_dir)
 
-                async with await Session.create(
-                    work_dir=work_dir_kaos,
-                    model=self.AGENT_MODEL,
-                    yolo=True,
-                    max_steps_per_turn=10,  # Quick analysis
-                ) as session:
-                    async for msg in session.prompt(prompt):
-                        if isinstance(msg, TextPart):
-                            text_parts.append(msg.text)
-                        elif isinstance(msg, ApprovalRequest):
-                            msg.resolve("approve")
+            async with await Session.create(
+                work_dir=work_dir_kaos,
+                model=self.AGENT_MODEL,
+                yolo=True,
+                max_steps_per_turn=10,  # Quick analysis
+            ) as session:
+                async for msg in session.prompt(prompt):
+                    if isinstance(msg, TextPart):
+                        text_parts.append(msg.text)
+                    elif isinstance(msg, ApprovalRequest):
+                        msg.resolve("approve")
 
-                response = "".join(text_parts)
+            response = "".join(text_parts)
 
-                # Parse the YAML response
-                data = self.parse_yaml_response(response)
-                if not data:
-                    return {}
+            # Parse the YAML response
+            data = self.parse_yaml_response(response)
+            if not data:
+                return {}
 
-                summaries = {}
-                for fs in data.get("file_summaries", []):
-                    f = fs.get("file", "")
-                    desc = fs.get("description", "")
-                    if f and desc:
-                        summaries[f] = desc
+            summaries = {}
+            for fs in data.get("file_summaries", []):
+                f = fs.get("file", "")
+                desc = fs.get("description", "")
+                if f and desc:
+                    summaries[f] = desc
 
-                logger.info(f"Generated summaries for {len(summaries)} files")
-                return summaries
+            logger.info(f"Generated summaries for {len(summaries)} files")
+            return summaries
 
         except Exception as e:
             logger.warning(f"Failed to generate file summaries: {e}")
