@@ -102,29 +102,38 @@ suggestions:
     suggestion_content: |
       Explain why it's wrong, what scenario triggers it, and the impact.
     existing_code: |
-      actual problematic code from the diff (COMPLETE LINE, not just the error)
+      actual problematic code (NO diff prefixes like +/-, just the code content)
     improved_code: |
-      working fix with proper error handling (COMPLETE LINE with fix applied)
+      working fix with proper error handling (NO diff prefixes, just the code content)
 ```
+
+**IMPORTANT**: Do NOT include diff prefixes (`+`, `-`, ` `) in `existing_code` or `improved_code`. Only include the actual code content.
 
 **CRITICAL for `existing_code` and `improved_code`**:
 - Must be COMPLETE code lines, not just the problematic part
 - `existing_code` MUST EXACTLY MATCH the line in the diff (copy-paste from diff)
 - `improved_code` is the same line with the fix applied
-- For typos: Include the full line with the typo, not just the word
-- Example CORRECT:
+- **For NEW code (+ lines)**: `existing_code` is the new line WITH the error, `improved_code` is the new line WITH the fix
+- **For typos in new code**: Don't include the `+` prefix, just the actual code content
+- Example CORRECT (typo in NEW code):
   ```yaml
+  # Line 125 in diff: + - Notify stakeholders of the succesful deployment
   existing_code: |
-    - You'll recieve a notification when your PR is merged
+    - Notify stakeholders of the succesful deployment
   improved_code: |
-    - You'll receive a notification when your PR is merged
+    - Notify stakeholders of the successful deployment
   ```
 - Example WRONG:
   ```yaml
   existing_code: |
-    recieve  # Just the word - GitHub can't match this!
+    + - Notify stakeholders of the succesful deployment  # Don't include the + prefix!
+  ```
+- Example WRONG:
+  ```yaml
+  existing_code: |
+    succesful  # Just the word - GitHub can't match this!
   improved_code: |
-    receive
+    successful
   ```
 
 ### Quality Requirements
