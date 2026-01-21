@@ -227,7 +227,7 @@ Most reviews can be completed by analyzing the diff alone. Only read additional 
 3. **Be specific and certain** - Only flag issues you're confident about
 4. **Provide working fixes** - Include concrete code examples
 
-**Efficiency is critical**: Aim to complete in 10-15 steps total.
+**Efficiency target**: Aim to complete in 20-30 steps total.
 
 ## Output Format
 
