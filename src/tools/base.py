@@ -170,6 +170,18 @@ class BaseTool(ABC):
             elif "```" in response:
                 yaml_content = response.split("```")[1].split("```")[0]
 
+            # Sanitize: Remove lines that look like Python code with type hints
+            # These sometimes leak into YAML output and break parsing
+            lines = yaml_content.split('\n')
+            sanitized_lines = []
+            for line in lines:
+                # Skip lines that look like Python method signatures
+                if ' -> ' in line and '(' in line and ')' in line:
+                    logger.debug(f"Skipping Python code line: {line[:80]}")
+                    continue
+                sanitized_lines.append(line)
+            yaml_content = '\n'.join(sanitized_lines)
+
             parsed = yaml.safe_load(yaml_content)
             if parsed is None:
                 logger.warning(

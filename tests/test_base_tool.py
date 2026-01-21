@@ -73,7 +73,7 @@ def mock_action_config():
     """Create mock action config."""
     with patch("tools.base.get_action_config") as mock:
         config = Mock()
-        config.model = "kimi-k2-thinking"
+        config.model = "kimi-k2-thinking-turbo"
         config.kimi_base_url = "https://api.moonshot.cn/v1"
         config.review_level = "normal"
         config.max_files = 10
@@ -496,7 +496,7 @@ list:
 
         assert "Powered by" in footer
         assert "Kimi" in footer
-        assert "kimi-k2-thinking" in footer
+        assert "kimi-k2-thinking-turbo" in footer
 
     def test_format_footer_with_extra_info(self, mock_action_config):
         """Test footer with extra information."""
@@ -517,7 +517,7 @@ list:
 
             assert api_key == "test-key"
             assert os.environ.get("KIMI_BASE_URL") == "https://api.moonshot.cn/v1"
-            assert os.environ.get("KIMI_MODEL_NAME") == "kimi-k2-thinking"
+            assert os.environ.get("KIMI_MODEL_NAME") == "kimi-k2-thinking-turbo"
 
     def test_setup_agent_env_no_key(self, mock_action_config):
         """Test agent environment setup without API key."""
