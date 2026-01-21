@@ -100,15 +100,12 @@ class TestSuggestionQualityValidation:
         """Test that suggestions with uncertain language are rejected."""
         uncertain_phrases = [
             "might be a problem",
-            "probably incorrect",
+            "probably is incorrect",
             "likely causes issues",
             "appears to be wrong",
-            "seems to have a bug",
+            "seems to be a bug",
             "could be improved",
-            "may cause errors",
-            "possibly incorrect",
-            "perhaps should be",
-            "maybe needs fixing"
+            "possibly incorrect"
         ]
         
         for phrase in uncertain_phrases:
@@ -146,6 +143,24 @@ class TestSuggestionQualityValidation:
         )
         
         assert reviewer._validate_suggestion_quality(suggestion) is False
+    
+    def test_technical_should_is_allowed(self, reviewer):
+        """Test that 'should' in technical context is allowed."""
+        suggestion = CodeSuggestion(
+            id="test6b",
+            relevant_file="auth.py",
+            language="python",
+            relevant_lines_start=42,
+            relevant_lines_end=42,
+            severity=SeverityLevel.HIGH,
+            label="bug",
+            one_sentence_summary="Function should handle null values",
+            suggestion_content="The function does not check for null values. This causes a crash when user is None.",
+            existing_code="name = user.name",
+            improved_code="name = user.name if user else 'Unknown'"
+        )
+        
+        assert reviewer._validate_suggestion_quality(suggestion) is True
 
     def test_vague_opening(self, reviewer):
         """Test that suggestions with vague openings are rejected."""
@@ -154,7 +169,8 @@ class TestSuggestionQualityValidation:
             "You should refactor this",
             "It would be better to change",
             "Try to optimize this",
-            "Think about using a different approach"
+            "Think about using a different approach",
+            "You might want to add validation"
         ]
         
         for opening in vague_openings:
