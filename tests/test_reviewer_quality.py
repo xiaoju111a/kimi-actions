@@ -241,6 +241,24 @@ class TestSuggestionQualityValidation:
         
         assert reviewer._validate_suggestion_quality(suggestion) is True
 
+    def test_typo_suggestion_with_relaxed_validation(self, reviewer):
+        """Test that typo/documentation suggestions have relaxed validation."""
+        suggestion = CodeSuggestion(
+            id="test10",
+            relevant_file="auth.py",
+            language="python",
+            relevant_lines_start=15,
+            relevant_lines_end=15,
+            severity=SeverityLevel.LOW,
+            label="documentation",
+            one_sentence_summary="Typo in error message: 'occured' should be 'occurred'",
+            suggestion_content="Spelling error in message.",  # Short content is OK for typos (>10 chars)
+            existing_code='raise ValueError("An error occured")',
+            improved_code='raise ValueError("An error occurred")'
+        )
+        
+        assert reviewer._validate_suggestion_quality(suggestion) is True
+
 
 class TestSuggestionParsing:
     """Test suggestion parsing with quality validation."""

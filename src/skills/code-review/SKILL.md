@@ -55,6 +55,12 @@ cat path/to/related_file.py
 - **Type safety**: Missing type checks, incorrect types
 - **Concurrency**: Thread safety issues, deadlock potential
 
+### P3 - Low (Flag if trivial to fix)
+- **Typos**: Spelling errors in comments, docstrings, error messages, or variable names
+  - Only flag obvious typos (e.g., "recieve" → "receive", "occured" → "occurred")
+  - Focus on user-facing text (error messages, logs, documentation)
+  - Variable/function name typos are lower priority unless they affect readability
+
 ### Do NOT Flag
 - Style preferences (formatting, naming conventions)
 - Pre-existing issues (code in context lines without `+`)
@@ -175,9 +181,23 @@ suggestions:
 - **suggestions**: List of issues (use `[]` if none found)
   - **severity**: `critical` | `high` | `medium` | `low`
   - **label**: `bug` | `security` | `performance` | `documentation`
-  - **suggestion_content**: Why it's wrong + impact + scenario
+  - **suggestion_content**: Why it's wrong + impact + scenario (for typos, just note the correction)
   - **existing_code**: Actual problematic code (max 5 lines)
   - **improved_code**: Working fix (max 5 lines)
+
+**Note on typos**: For spelling errors, keep it simple:
+```yaml
+- relevant_file: "auth.py"
+  relevant_lines_start: 15
+  severity: "low"
+  label: "documentation"
+  one_sentence_summary: "Typo in error message: 'occured' should be 'occurred'"
+  suggestion_content: "Spelling error in user-facing error message."
+  existing_code: |
+    raise ValueError("An error occured during authentication")
+  improved_code: |
+    raise ValueError("An error occurred during authentication")
+```
 
 ## Review Process
 
