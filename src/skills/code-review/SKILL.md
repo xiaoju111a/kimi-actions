@@ -186,7 +186,7 @@ summary: "Fixed race condition in cache invalidation that caused stale data to b
         orders = user.orders.all()
 ```
 
-### P3: Typo (Multiple Instances)
+### P3: Typo (Multiple Instances of SAME Typo)
 ```yaml
 - relevant_file: "docs/DEPLOYMENT.md"
   relevant_lines_start: 5
@@ -201,6 +201,37 @@ summary: "Fixed race condition in cache invalidation that caused stale data to b
     deployment enviroment
   improved_code: |
     deployment environment
+```
+
+**Important**: Only merge when it's the SAME typo repeated. Different typos should be separate suggestions.
+
+**Example - CORRECT (separate suggestions for different typos)**:
+```yaml
+# Suggestion 1
+- relevant_file: "docs/DEPLOYMENT.md"
+  relevant_lines_start: 125
+  relevant_lines_end: 125
+  one_sentence_summary: "Typo: 'succesful' should be 'successful'"
+  existing_code: "Notify stakeholders of the succesful deployment"
+  improved_code: "Notify stakeholders of the successful deployment"
+
+# Suggestion 2  
+- relevant_file: "docs/DEPLOYMENT.md"
+  relevant_lines_start: 127
+  relevant_lines_end: 127
+  one_sentence_summary: "Typo: 'necesary' should be 'necessary'"
+  existing_code: "Be prepared to rollback if necesary"
+  improved_code: "Be prepared to rollback if necessary"
+```
+
+**Example - WRONG (merging different typos)**:
+```yaml
+# DON'T DO THIS - these are different typos!
+- relevant_file: "docs/DEPLOYMENT.md"
+  relevant_lines_start: 125
+  relevant_lines_end: 127
+  one_sentence_summary: "Multiple typos: 'succesful' and 'necesary'"
+  # This breaks the code structure!
 ```
 
 ### P3: Debug Code
@@ -270,7 +301,7 @@ Before outputting YAML:
 - [ ] Only flagging new code (+ lines in diff)
 - [ ] Each suggestion would genuinely help the author
 - [ ] File descriptions are specific (not "modified" or "new file")
-- [ ] P3 issues: Same typo in one file = ONE suggestion
+- [ ] P3 typos: SAME typo repeated = ONE suggestion; DIFFERENT typos = SEPARATE suggestions
 
 **Remember**: Quality over quantity. 3 excellent suggestions > 10 mediocre ones.
 
