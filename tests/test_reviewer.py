@@ -145,8 +145,8 @@ suggestions:
     language: "python"
     severity: "medium"
     label: "bug"
-    one_sentence_summary: "Fix the bug"
-    suggestion_content: "This is a bug"
+    one_sentence_summary: "Unhandled exception in main function"
+    suggestion_content: "The main function does not handle exceptions properly. When an error occurs, the program crashes without proper error handling."
     existing_code: "old code"
     improved_code: "new code"
     relevant_lines_start: 10
@@ -198,8 +198,13 @@ suggestions: []
         response = """```yaml
 suggestions:
   - relevant_file: "test.py"
+    language: "python"
     severity: "high"
-    suggestion_content: "Fix this"
+    label: "bug"
+    one_sentence_summary: "Null pointer exception"
+    suggestion_content: "The code does not check for null values before accessing properties. This will cause a null pointer exception."
+    existing_code: "value = obj.property"
+    improved_code: "value = obj.property if obj else None"
     relevant_lines_start: 5
     relevant_lines_end: 10
 ```"""

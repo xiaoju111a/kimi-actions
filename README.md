@@ -189,14 +189,23 @@ Use these commands in PR comments:
 
 | Command | Description | Usage Location |
 |---------|-------------|----------------|
-| `/review` | Code review with inline comments | PR comment area |
-| `/review --incremental` | Review only new commits | PR comment area |
+| `/review` | Smart code review with inline comments (auto-detects incremental) | PR comment area |
 | `/describe` | Auto-generate PR description | PR comment area |
 | `/describe --comment` | Generate description as comment | PR comment area |
 | `/improve` | Code improvement suggestions | PR comment area |
 | `/ask <question>` | Q&A about the PR or specific code | PR comment area **or** Files changed tab (inline) |
 | `/labels` | Auto-generate and apply PR labels | PR comment area |
 | `/help` | Show help message | PR comment area |
+
+**🧠 Smart Incremental Review:**
+
+The `/review` command automatically detects the best review strategy:
+- **First review**: Full review of all changes
+- **Subsequent reviews**: Only reviews new commits since last review (if previous review <7 days old)
+- **Old reviews**: Automatically does full re-review if previous review is >7 days old
+- **No new commits**: Shows "✅ No new changes since last review" message
+
+No parameters needed - it intelligently adapts to your workflow! 🎯
 
 **💡 Using `/ask` for code-specific questions:**
 - **In PR comment area**: Ask general questions about the entire PR

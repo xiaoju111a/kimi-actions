@@ -223,13 +223,7 @@ def handle_comment_event(event: dict, config: ActionConfig):
     try:
         if command == "review":
             reviewer = Reviewer(github)
-            # Check for flags
-            incremental = "--incremental" in args or "-i" in args
-            # Build command string for quote (reviewer will add it to the result)
-            original_command = "/review"
-            if args:
-                original_command += f" {args}"
-            result = reviewer.run(repo_name, pr_number, incremental=incremental, inline=True, command_quote=original_command)
+            result = reviewer.run(repo_name, pr_number, inline=True, command_quote="/review")
             # Don't add quote again - reviewer already includes it
             if result:
                 github.post_comment(repo_name, pr_number, result)
@@ -471,8 +465,7 @@ def get_help_message() -> str:
 
 | Command | Description |
 |---------|-------------|
-| `/review` | Perform code review with inline comments |
-| `/review --incremental` | Review only new commits |
+| `/review` | Smart code review with inline comments (auto-detects incremental) |
 | `/describe` | Auto-generate PR description |
 | `/describe --comment` | Generate description as comment |
 | `/improve` | Provide code improvement suggestions |
@@ -483,11 +476,20 @@ def get_help_message() -> str:
 ### Examples
 
 ```bash
-/review
-/review --incremental
+/review                    # Automatically uses incremental or full review
 /ask What is the time complexity of this function?
 /labels
 ```
+
+### Smart Incremental Review
+
+The `/review` command automatically detects the best review strategy:
+- **First review**: Full review of all changes
+- **Subsequent reviews**: Only reviews new commits since last review
+- **Old reviews (>7 days)**: Automatically does full re-review
+- **No new commits**: Shows "no changes" message
+
+No parameters needed - it just works! 🎯
 
 ---
 <sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>

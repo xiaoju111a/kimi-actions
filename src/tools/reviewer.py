@@ -27,20 +27,28 @@ class Reviewer(BaseTool):
         return "code-review"
 
     def run(self, repo_name: str, pr_number: int, **kwargs) -> str:
-        """Run code review on a PR."""
-        incremental = kwargs.get("incremental", False)
+        """Run code review on a PR.
+        
+        Automatically detects if incremental review should be used based on:
+        - Existence of previous review
+        - Age of previous review (<7 days)
+        - Presence of new commits
+        """
         inline = kwargs.get("inline", True)
         command_quote = kwargs.get("command_quote", "")
 
         pr = self.github.get_pr(repo_name, pr_number)
         self.load_context(repo_name, ref=pr.head.sha)
 
+        # Auto-detect if incremental review should be used
+        incremental = self._should_use_incremental_review(repo_name, pr_number)
+
         if incremental:
             compressed_diff, included_chunks, excluded_chunks, last_sha = self._get_incremental_diff(
                 repo_name, pr_number
             )
             if compressed_diff is None:
-                return "No new changes since last review."
+                return "✅ No new changes since last review."
         else:
             compressed_diff, included_chunks, excluded_chunks = self.get_diff(repo_name, pr_number)
 
@@ -128,86 +136,65 @@ Branch: {pr_branch}
 {diff[:DIFF_LIMIT_REVIEW]}
 ```
 
-## CRITICAL: Output Format Requirement
-**YOU MUST RESPOND ONLY IN YAML FORMAT. NO EXCEPTIONS.**
+## Important: Use Tools to Get Context
 
-Your response must be EXACTLY in this format:
-```yaml
-summary: "..."
-score: 85
-file_summaries:
-  - file: "..."
-    description: "..."
-suggestions:
-  - relevant_file: "..."
-    ...
+The diff above may not show enough context. **You have access to the full repository.**
+
+When you need more information:
+```bash
+# Read complete files
+cat path/to/file.py
+
+# Search for function definitions
+grep -r "function_name" .
+
+# Check related files
+cat path/to/related_file.py
 ```
 
-DO NOT:
-- Add any text before the ```yaml block
-- Add any text after the closing ``` 
-- Use natural language or markdown format
-- Write explanations outside the YAML structure
+**Use these tools liberally.** It's better to read 5 files and make 1 accurate suggestion than to guess.
 
-## Review Scope
-Review ALL file types including:
-- **Code files**: Check for bugs, security issues, performance problems
-- **Documentation files (.md)**: Check for typos, grammar, broken links, incorrect code examples
-- **Configuration files**: Check for syntax errors, security issues
-- **Test files**: Check for test coverage and correctness
+## Your Task
 
-## Instructions
-1. Analyze ALL changed files (code, docs, config, tests)
-2. For documentation: check spelling, grammar, code examples, links
-3. For code: identify bugs, security issues, and improvements
-4. Read related files if needed to understand context
-5. **CRITICAL**: Provide SPECIFIC file descriptions:
-   - ❌ NEVER: "New file added", "Modified", "Documentation updated"
-   - ✅ ALWAYS: "Added quickstart guide with Session API examples"
-   - ✅ ALWAYS: "Fixed typo in authentication section and updated code samples"
-6. **If no issues found, return empty suggestions list but MUST provide file_summaries**
+1. **Understand the changes** - Read the diff and any related files you need
+2. **Find real issues** - Focus on bugs, security problems, and performance issues
+3. **Be specific and certain** - Only flag issues you're confident about
+4. **Provide working fixes** - Include concrete code examples
 
-## Required YAML Output Format
+## Output Format
+
+Respond with ONLY a YAML code block (no text before or after):
+
 ```yaml
-summary: "Brief summary of the PR (1-2 sentences)"
+summary: "Brief 1-2 sentence summary of what this PR does"
 score: 85
 file_summaries:
-  - file: "path/to/file.md"
-    description: "Added comprehensive API documentation with usage examples"
-  - file: "path/to/code.py"
-    description: "Implemented user authentication with JWT tokens"
+  - file: "path/to/file.py"
+    description: "Specific description (e.g., 'Added JWT authentication with token expiration')"
 suggestions:
   - relevant_file: "path/to/file.py"
     language: "python"
-    severity: "medium"
+    relevant_lines_start: 42
+    relevant_lines_end: 45
+    severity: "high"
     label: "bug"
-    one_sentence_summary: "Brief issue description"
-    suggestion_content: "Detailed explanation"
-    existing_code: "problematic code"
-    improved_code: "fixed code"
-    relevant_lines_start: 10
-    relevant_lines_end: 15
+    one_sentence_summary: "Specific issue description"
+    suggestion_content: |
+      Explain why it's wrong, what scenario triggers it, and the impact.
+    existing_code: |
+      actual problematic code from the diff
+    improved_code: |
+      working fix with proper error handling
 ```
 
-**CRITICAL RULES**:
-1. Your ENTIRE response = one YAML code block (```yaml ... ```)
-2. No text before or after the YAML block
-3. Every file MUST have a specific, meaningful description
-4. Empty suggestions list if no issues: suggestions: []
-5. For docs: check typos, grammar, examples, links
+**Quality Requirements:**
+- Every suggestion MUST have specific line numbers
+- Every suggestion MUST have both `existing_code` and `improved_code`
+- NO uncertain language ("might", "probably", "appears to", "likely")
+- NO vague suggestions without concrete fixes
+- Only flag NEW code (lines with `+` in the diff)
 
-**EXAMPLES OF GOOD FILE DESCRIPTIONS:**
-- ✅ "Added quickstart guide with Session API usage examples and installation instructions"
-- ✅ "Documented Session.create() method with parameters, return values, and error handling"
-- ✅ "Added prompt() function reference with async/await examples and approval handling"
-
-**EXAMPLES OF BAD FILE DESCRIPTIONS (DO NOT USE):**
-- ❌ "New file added"
-- ❌ "Documentation updated"
-- ❌ "Modified"
-- ❌ "Added documentation"
-
-**FINAL REMINDER**: Read the actual diff content and describe what functionality/documentation each file adds. Be specific!
+**If no issues found:** Use `suggestions: []` but still provide summary and file_summaries.
 """
 
         try:
@@ -257,6 +244,45 @@ suggestions:
         included, excluded = self.chunker.chunk_diff(diff, max_files=self.config.max_files)
         compressed = self.chunker.build_diff_string(included)
         return compressed, included, excluded, last_sha
+
+    def _should_use_incremental_review(self, repo_name: str, pr_number: int) -> bool:
+        """Determine if incremental review should be used.
+        
+        Incremental review is used when:
+        1. There's a previous bot review comment
+        2. The previous review was recent (within 7 days)
+        3. There are new commits since the last review
+        
+        Returns:
+            True if incremental review should be used, False otherwise
+        """
+        try:
+            last_review = self.github.get_last_bot_comment(repo_name, pr_number)
+            if not last_review:
+                logger.info("No previous review found, using full review")
+                return False
+            
+            # Check if review is recent (within 7 days)
+            from datetime import datetime, timedelta
+            review_age = datetime.now() - last_review["created_at"].replace(tzinfo=None)
+            if review_age > timedelta(days=7):
+                logger.info(f"Previous review is {review_age.days} days old, using full review")
+                return False
+            
+            # Check if there are new commits
+            last_sha = last_review["sha"]
+            new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
+            
+            if not new_commits:
+                logger.info("No new commits since last review")
+                return True  # Will return "no changes" message
+            
+            logger.info(f"Found {len(new_commits)} new commits since last review, using incremental review")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to determine incremental review status: {e}")
+            return False
 
     def _post_inline_comments(
         self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion],
@@ -308,7 +334,10 @@ suggestions:
 
         files_reviewed = total_files if total_files > 0 else len(included_chunks) if included_chunks else 0
         lines.append("**Reviewed changes**")
-        lines.append(f"Kimi reviewed {files_reviewed} changed files in this pull request and generated {inline_count} comments.\n")
+        
+        # Add incremental review indicator
+        review_type = "incremental review" if incremental else "full review"
+        lines.append(f"Kimi performed {review_type} on {files_reviewed} changed files and generated {inline_count} comments.\n")
 
         if included_chunks:
             lines.append("<details>")
@@ -390,7 +419,8 @@ suggestions:
             for s in suggestions_data:
                 severity_str = s.get("severity", "medium").lower()
                 severity = SeverityLevel(severity_str) if severity_str in ["critical", "high", "medium", "low"] else SeverityLevel.MEDIUM
-                suggestions.append(CodeSuggestion(
+                
+                suggestion = CodeSuggestion(
                     id=str(uuid.uuid4())[:8],
                     relevant_file=s.get("relevant_file", ""),
                     language=s.get("language", ""),
@@ -402,12 +432,71 @@ suggestions:
                     relevant_lines_end=s.get("relevant_lines_end", 0),
                     label=s.get("label", "bug"),
                     severity=severity
-                ))
-            logger.info(f"Parsed {len(suggestions)} suggestions from response")
+                )
+                
+                # Validate suggestion quality
+                if self._validate_suggestion_quality(suggestion):
+                    suggestions.append(suggestion)
+                else:
+                    logger.warning(f"Filtered low-quality suggestion: {suggestion.one_sentence_summary[:50]}")
+            
+            logger.info(f"Parsed {len(suggestions)} high-quality suggestions from response")
             return suggestions
         except Exception as e:
             logger.error(f"Failed to parse suggestions: {e}")
             return []
+
+    def _validate_suggestion_quality(self, s: CodeSuggestion) -> bool:
+        """Validate suggestion quality to filter out vague or uncertain suggestions.
+        
+        Returns:
+            True if suggestion meets quality standards, False otherwise
+        """
+        # Must have specific line numbers
+        if not s.relevant_lines_start or s.relevant_lines_start <= 0:
+            logger.debug(f"Rejected: missing line numbers - {s.one_sentence_summary[:50]}")
+            return False
+        
+        # Must have both existing and improved code
+        if not s.existing_code or not s.improved_code:
+            logger.debug(f"Rejected: missing code examples - {s.one_sentence_summary[:50]}")
+            return False
+        
+        # Code must be different
+        if s.existing_code.strip() == s.improved_code.strip():
+            logger.debug(f"Rejected: identical code - {s.one_sentence_summary[:50]}")
+            return False
+        
+        # Must have meaningful content
+        if not s.suggestion_content or len(s.suggestion_content.strip()) < 20:
+            logger.debug(f"Rejected: too short content - {s.one_sentence_summary[:50]}")
+            return False
+        
+        # Check for uncertain language
+        uncertain_words = [
+            "might", "probably", "likely", "appears to", "seems to",
+            "could be", "may be", "may cause", "possibly", "perhaps", "maybe"
+        ]
+        content_lower = s.suggestion_content.lower()
+        summary_lower = s.one_sentence_summary.lower()
+        
+        for word in uncertain_words:
+            if word in content_lower or word in summary_lower:
+                logger.debug(f"Rejected: uncertain language '{word}' - {s.one_sentence_summary[:50]}")
+                return False
+        
+        # Check for vague descriptions
+        vague_phrases = [
+            "improve", "consider", "should", "better to", "it would be",
+            "you might want", "try to", "think about"
+        ]
+        
+        for phrase in vague_phrases:
+            if phrase in content_lower[:50]:  # Check first 50 chars
+                logger.debug(f"Rejected: vague opening '{phrase}' - {s.one_sentence_summary[:50]}")
+                return False
+        
+        return True
 
 
     def _format_review(

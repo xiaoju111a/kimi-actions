@@ -462,7 +462,7 @@ list:
         assert result["key"] == "value"
     
     def test_parse_yaml_response_invalid(self, mock_action_config):
-        """Test parsing invalid YAML."""
+        """Test parsing invalid YAML with error recovery."""
         github = MockGitHubClient()
         tool = ConcreteTool.create(github)
         
@@ -470,7 +470,10 @@ list:
         
         result = tool.parse_yaml_response(response)
         
-        assert result is None
+        # Error recovery should return partial data with empty suggestions
+        assert result is not None
+        assert "suggestions" in result
+        assert result["suggestions"] == []
     
     def test_format_footer(self, mock_action_config):
         """Test footer formatting."""

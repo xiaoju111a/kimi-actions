@@ -21,7 +21,7 @@ Usage in Agent:
 import sys
 import json
 import yaml
-from typing import Dict, List, Any
+from typing import Dict, Any
 
 
 def generate_review_yaml(data: Dict[str, Any]) -> str:
