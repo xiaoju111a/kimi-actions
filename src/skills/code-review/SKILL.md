@@ -102,10 +102,16 @@ suggestions:
     suggestion_content: |
       Explain why it's wrong, what scenario triggers it, and the impact.
     existing_code: |
-      actual problematic code from the diff
+      actual problematic code from the diff (COMPLETE LINE, not just the error)
     improved_code: |
-      working fix with proper error handling
+      working fix with proper error handling (COMPLETE LINE with fix applied)
 ```
+
+**CRITICAL for `existing_code` and `improved_code`**:
+- Must be COMPLETE code lines, not just the problematic part
+- For typos: Include the full line with the typo, not just the word
+- Example: `- Notify stakeholders of the succesful deployment` (full line)
+- NOT: `succesful` (just the word)
 
 ### Quality Requirements
 
@@ -198,9 +204,9 @@ summary: "Fixed race condition in cache invalidation that caused stale data to b
     The word 'enviroment' is misspelled throughout the file (12 occurrences). 
     Use find-and-replace to fix all instances.
   existing_code: |
-    deployment enviroment
+    Set up the deployment enviroment
   improved_code: |
-    deployment environment
+    Set up the deployment environment
 ```
 
 **Important**: Only merge when it's the SAME typo repeated. Different typos should be separate suggestions.
@@ -211,17 +217,29 @@ summary: "Fixed race condition in cache invalidation that caused stale data to b
 - relevant_file: "docs/DEPLOYMENT.md"
   relevant_lines_start: 125
   relevant_lines_end: 125
+  severity: "low"
+  label: "documentation"
   one_sentence_summary: "Typo: 'succesful' should be 'successful'"
-  existing_code: "Notify stakeholders of the succesful deployment"
-  improved_code: "Notify stakeholders of the successful deployment"
+  suggestion_content: |
+    Spelling error in deployment guide.
+  existing_code: |
+    - Notify stakeholders of the succesful deployment
+  improved_code: |
+    - Notify stakeholders of the successful deployment
 
 # Suggestion 2  
 - relevant_file: "docs/DEPLOYMENT.md"
   relevant_lines_start: 127
   relevant_lines_end: 127
+  severity: "low"
+  label: "documentation"
   one_sentence_summary: "Typo: 'necesary' should be 'necessary'"
-  existing_code: "Be prepared to rollback if necesary"
-  improved_code: "Be prepared to rollback if necessary"
+  suggestion_content: |
+    Spelling error in deployment guide.
+  existing_code: |
+    - Be prepared to rollback if necesary
+  improved_code: |
+    - Be prepared to rollback if necessary
 ```
 
 **Example - WRONG (merging different typos)**:
