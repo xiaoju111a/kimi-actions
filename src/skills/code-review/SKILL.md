@@ -109,9 +109,23 @@ suggestions:
 
 **CRITICAL for `existing_code` and `improved_code`**:
 - Must be COMPLETE code lines, not just the problematic part
+- `existing_code` MUST EXACTLY MATCH the line in the diff (copy-paste from diff)
+- `improved_code` is the same line with the fix applied
 - For typos: Include the full line with the typo, not just the word
-- Example: `- Notify stakeholders of the succesful deployment` (full line)
-- NOT: `succesful` (just the word)
+- Example CORRECT:
+  ```yaml
+  existing_code: |
+    - You'll recieve a notification when your PR is merged
+  improved_code: |
+    - You'll receive a notification when your PR is merged
+  ```
+- Example WRONG:
+  ```yaml
+  existing_code: |
+    recieve  # Just the word - GitHub can't match this!
+  improved_code: |
+    receive
+  ```
 
 ### Quality Requirements
 
@@ -315,6 +329,8 @@ if err != nil { return fmt.Errorf("read failed: %w", err) }
 Before outputting YAML:
 - [ ] Every suggestion has specific line numbers
 - [ ] Every suggestion has both `existing_code` and `improved_code`
+- [ ] `existing_code` EXACTLY MATCHES the line in the diff (copy-paste from diff!)
+- [ ] `improved_code` is the complete line with fix applied
 - [ ] No uncertain language ("might", "probably", "appears")
 - [ ] Only flagging new code (+ lines in diff)
 - [ ] Each suggestion would genuinely help the author
