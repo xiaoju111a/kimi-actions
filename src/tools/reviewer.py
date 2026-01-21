@@ -8,7 +8,7 @@ Supports inline comments and incremental review.
 import asyncio
 import logging
 import tempfile
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 import uuid
 
 from tools.base import BaseTool, DIFF_LIMIT_REVIEW
@@ -17,6 +17,9 @@ from models import CodeSuggestion, SeverityLevel, ReviewOptions, SuggestionContr
 from suggestion_service import SuggestionService
 
 logger = logging.getLogger(__name__)
+
+# Constants
+SEVERITY_ICONS = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
 
 
 class Reviewer(BaseTool):
@@ -61,6 +64,9 @@ class Reviewer(BaseTool):
 
         system_prompt = self._build_system_prompt(skill)
 
+        # Generate file descriptions first
+        file_summaries = self._generate_file_summaries(included_chunks, compressed_diff)
+
         with tempfile.TemporaryDirectory() as work_dir:
             if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
                 return f"### 🌗 Pull request overview\n\n❌ Failed to clone repository\n\n{self.format_footer()}"
@@ -96,7 +102,8 @@ class Reviewer(BaseTool):
             summary = self._format_inline_summary(
                 response, filtered, len(filtered), total_files=total_files,
                 included_chunks=included_chunks, incremental=incremental,
-                current_sha=pr.head.sha, command_quote=command_quote
+                current_sha=pr.head.sha, command_quote=command_quote,
+                file_summaries=file_summaries
             )
             posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
             if posted_count > 0:
@@ -105,7 +112,8 @@ class Reviewer(BaseTool):
         summary = self._format_inline_summary(
             response, filtered, posted_count, total_files=total_files,
             included_chunks=included_chunks, incremental=incremental,
-            current_sha=pr.head.sha, command_quote=command_quote
+            current_sha=pr.head.sha, command_quote=command_quote,
+            file_summaries=file_summaries
         )
         return summary
 
@@ -309,17 +317,20 @@ suggestions:
     def _format_inline_summary(
         self, response: str, suggestions: List[CodeSuggestion], inline_count: int,
         total_files: int = 0, included_chunks: List[DiffChunk] = None,
-        incremental: bool = False, current_sha: str = None, command_quote: str = ""
+        incremental: bool = False, current_sha: str = None, command_quote: str = "",
+        file_summaries: Dict[str, str] = None
     ) -> str:
         """Format a short summary when inline comments were posted."""
         data = self.parse_yaml_response(response) or {}
         summary = data.get("summary", "").strip()
-        file_summaries = {}
+        
+        # Merge file summaries from agent response with pre-generated ones
+        merged_summaries = file_summaries or {}
         for fs in data.get("file_summaries", []):
             f = fs.get("file", "")
             desc = fs.get("description", "")
             if f and desc:
-                file_summaries[f] = desc
+                merged_summaries[f] = desc
 
         lines = []
         if command_quote:
@@ -345,8 +356,8 @@ suggestions:
             lines.append("| File | Description |")
             lines.append("|------|-------------|")
             for chunk in included_chunks:
-                if chunk.filename in file_summaries:
-                    desc = file_summaries[chunk.filename]
+                if chunk.filename in merged_summaries:
+                    desc = merged_summaries[chunk.filename]
                 else:
                     # Generate more meaningful default descriptions
                     change_type_desc = {
@@ -365,11 +376,10 @@ suggestions:
 
         if suggestions:
             lines.append("**Issues found:**")
-            sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
             
             # Show first 5 issues
             for s in suggestions[:5]:
-                icon = sev_icons.get(s.severity.value, "⚪")
+                icon = SEVERITY_ICONS.get(s.severity.value, "⚪")
                 file_name = s.relevant_file or "unknown"
                 issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
                 lines.append(f"- {icon} `{file_name}`: {issue_summary}")
@@ -379,7 +389,7 @@ suggestions:
                 lines.append("<details>")
                 lines.append(f"<summary>... and {len(suggestions) - 5} more</summary>\n")
                 for s in suggestions[5:]:
-                    icon = sev_icons.get(s.severity.value, "⚪")
+                    icon = SEVERITY_ICONS.get(s.severity.value, "⚪")
                     file_name = s.relevant_file or "unknown"
                     issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
                     lines.append(f"- {icon} `{file_name}`: {issue_summary}")
@@ -510,84 +520,6 @@ suggestions:
         return True
 
 
-    def _format_review(
-        self, response: str, valid: List[CodeSuggestion], discarded: List[CodeSuggestion],
-        excluded_files: List[DiffChunk] = None, included_chunks: List[DiffChunk] = None,
-        incremental: bool = False, current_sha: str = None
-    ) -> str:
-        """Format review in Copilot-style format."""
-        data = self.parse_yaml_response(response)
-        if not data:
-            return self._format_fallback(response, current_sha)
-
-        lines = []
-        summary = data.get("summary", "").strip()
-        lines.append("### Pull request overview")
-        if summary:
-            lines.append(f"{summary}\n")
-
-        if valid:
-            lines.append("**Key Changes:**")
-            files_changed = set(s.relevant_file for s in valid if s.relevant_file)
-            for f in list(files_changed)[:5]:
-                lines.append(f"- `{f}`")
-            lines.append("")
-
-        total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in valid + discarded if s.relevant_file))
-        if excluded_files:
-            total_files += len(excluded_files)
-        lines.append("**Reviewed changes**")
-        lines.append(f"Kimi reviewed {total_files} changed files and generated {len(valid)} comments.\n")
-
-        if valid:
-            lines.append("---\n")
-            for s in valid:
-                location = f"`{s.relevant_file}`"
-                if s.relevant_lines_start:
-                    location += f" line {s.relevant_lines_start}"
-                    if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
-                        location += f"-{s.relevant_lines_end}"
-                lines.append(f"📍 {location}\n")
-                lines.append(f"{s.suggestion_content}\n")
-                if s.existing_code and s.improved_code:
-                    lines.append("**Suggested change**")
-                    lines.append("```diff")
-                    for line in s.existing_code.strip().splitlines():
-                        lines.append(f"- {line}")
-                    for line in s.improved_code.strip().splitlines():
-                        lines.append(f"+ {line}")
-                    lines.append("```")
-                lines.append("\n---\n")
-
-        if discarded:
-            lines.append(f"<details>\n<summary>📋 {len(discarded)} low-priority suggestions</summary>\n")
-            for s in discarded[:3]:
-                lines.append(f"- {s.one_sentence_summary} (`{s.relevant_file}`)")
-            if len(discarded) > 3:
-                lines.append("<details>")
-                lines.append(f"<summary>... and {len(discarded) - 3} more</summary>\n")
-                for s in discarded[3:]:
-                    lines.append(f"- {s.one_sentence_summary} (`{s.relevant_file}`)")
-                lines.append("</details>")
-            lines.append("</details>\n")
-
-        if excluded_files:
-            lines.append(f"<details>\n<summary>📁 {len(excluded_files)} files not reviewed (token limit)</summary>\n")
-            for chunk in excluded_files[:5]:
-                lines.append(f"- `{chunk.filename}`")
-            if len(excluded_files) > 5:
-                lines.append("<details>")
-                lines.append(f"<summary>... and {len(excluded_files) - 5} more</summary>\n")
-                for chunk in excluded_files[5:]:
-                    lines.append(f"- `{chunk.filename}`")
-                lines.append("</details>")
-            lines.append("</details>\n")
-
-        lines.append(self.format_footer())
-        if current_sha:
-            lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
-        return "\n".join(lines)
-
     def _format_fallback(self, response: str, current_sha: str = None) -> str:
         """Fallback formatting when no suggestions found."""
         data = self.parse_yaml_response(response)
@@ -610,3 +542,95 @@ suggestions:
         if current_sha:
             result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
         return result
+
+    def _generate_file_summaries(self, chunks: List[DiffChunk], diff: str) -> Dict[str, str]:
+        """Generate concise descriptions for each changed file using Agent.
+        
+        This runs a quick analysis before the main review to provide better
+        file descriptions in the summary table.
+        """
+        if not chunks:
+            return {}
+        
+        try:
+            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+            from kaos.path import KaosPath
+        except ImportError:
+            logger.warning("kimi-agent-sdk not available for file summaries")
+            return {}
+        
+        api_key = self.setup_agent_env()
+        if not api_key:
+            return {}
+        
+        # Build a concise prompt with just file paths and their diffs
+        file_list = []
+        for chunk in chunks[:10]:  # Limit to first 10 files to save tokens
+            change_type = chunk.change_type or "modified"
+            file_list.append(f"- `{chunk.filename}` ({change_type})")
+        
+        prompt = f"""Analyze these changed files and provide a ONE-sentence description for each.
+
+Files changed:
+{chr(10).join(file_list)}
+
+Diff preview (first 3000 chars):
+```diff
+{diff[:3000]}
+```
+
+Respond with ONLY a YAML code block:
+```yaml
+file_summaries:
+  - file: "path/to/file1.py"
+    description: "One specific sentence about what changed (e.g., 'Added JWT authentication with token expiration')"
+  - file: "path/to/file2.py"
+    description: "One specific sentence"
+```
+
+Requirements:
+- ONE sentence per file (max 100 chars)
+- Be specific about WHAT changed, not just "modified" or "updated"
+- Focus on the main change, not every detail
+- Use technical terms appropriately
+"""
+        
+        try:
+            text_parts = []
+            with tempfile.TemporaryDirectory() as work_dir:
+                work_dir_kaos = KaosPath(work_dir)
+                
+                async def run_summary():
+                    async with await Session.create(
+                        work_dir=work_dir_kaos,
+                        model=self.AGENT_MODEL,
+                        yolo=True,
+                        max_steps_per_turn=10,  # Quick analysis
+                    ) as session:
+                        async for msg in session.prompt(prompt):
+                            if isinstance(msg, TextPart):
+                                text_parts.append(msg.text)
+                            elif isinstance(msg, ApprovalRequest):
+                                msg.resolve("approve")
+                
+                asyncio.run(run_summary())
+                response = "".join(text_parts)
+                
+                # Parse the YAML response
+                data = self.parse_yaml_response(response)
+                if not data:
+                    return {}
+                
+                summaries = {}
+                for fs in data.get("file_summaries", []):
+                    f = fs.get("file", "")
+                    desc = fs.get("description", "")
+                    if f and desc:
+                        summaries[f] = desc
+                
+                logger.info(f"Generated summaries for {len(summaries)} files")
+                return summaries
+                
+        except Exception as e:
+            logger.warning(f"Failed to generate file summaries: {e}")
+            return {}
