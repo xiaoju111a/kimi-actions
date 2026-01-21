@@ -31,7 +31,7 @@ DIFF_LIMIT_DESCRIBE = 12000
 
 class BaseTool(ABC):
     """Abstract base class for all tools.
-    
+
     Subclasses must implement:
     - skill_name: The default skill to use
     - run(): The main execution logic
@@ -43,8 +43,7 @@ class BaseTool(ABC):
 
         # Diff chunking
         self.chunker = DiffChunker(
-            max_tokens=DIFF_LIMIT_REVIEW,
-            exclude_patterns=self.config.exclude_patterns
+            max_tokens=DIFF_LIMIT_REVIEW, exclude_patterns=self.config.exclude_patterns
         )
 
         # Skill management
@@ -74,7 +73,9 @@ class BaseTool(ABC):
         self.skill_manager.load_from_repo(self.github, repo_name, ref=ref)
 
         if self.repo_config and self.repo_config.ignore_files:
-            self.chunker.exclude_patterns = list(self.chunker.exclude_patterns) + self.repo_config.ignore_files
+            self.chunker.exclude_patterns = (
+                list(self.chunker.exclude_patterns) + self.repo_config.ignore_files
+            )
 
     def get_skill(self) -> Optional[Skill]:
         """Get the skill for this tool, respecting overrides."""
@@ -92,13 +93,17 @@ class BaseTool(ABC):
 
         return skill
 
-    def get_diff(self, repo_name: str, pr_number: int) -> Tuple[str, List[DiffChunk], List[DiffChunk]]:
+    def get_diff(
+        self, repo_name: str, pr_number: int
+    ) -> Tuple[str, List[DiffChunk], List[DiffChunk]]:
         """Get and process PR diff with intelligent chunking."""
         diff = self.github.get_pr_diff(repo_name, pr_number)
         if not diff:
             return "", [], []
 
-        included, excluded = self.chunker.chunk_diff(diff, max_files=self.config.max_files)
+        included, excluded = self.chunker.chunk_diff(
+            diff, max_files=self.config.max_files
+        )
         compressed = self.chunker.build_diff_string(included)
 
         total_tokens = sum(chunk.tokens for chunk in included)
@@ -126,17 +131,21 @@ class BaseTool(ABC):
 
     def setup_agent_env(self) -> Optional[str]:
         """Setup environment variables for Agent SDK.
-        
+
         Returns:
             API key if available, None otherwise.
         """
         api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("INPUT_KIMI_API_KEY")
         if not api_key:
             return None
-        
+
         # Get base URL from config or environment
-        base_url = self.config.kimi_base_url or os.environ.get("KIMI_BASE_URL") or self.AGENT_BASE_URL
-        
+        base_url = (
+            self.config.kimi_base_url
+            or os.environ.get("KIMI_BASE_URL")
+            or self.AGENT_BASE_URL
+        )
+
         os.environ["KIMI_API_KEY"] = api_key
         os.environ["KIMI_BASE_URL"] = base_url
         os.environ["KIMI_MODEL_NAME"] = self.AGENT_MODEL
@@ -145,12 +154,12 @@ class BaseTool(ABC):
     @staticmethod
     def parse_yaml_response(response: str) -> Optional[dict]:
         """Parse YAML from LLM response with error recovery.
-        
+
         Handles common formats:
         - ```yaml ... ```
         - ``` ... ```
         - Raw YAML
-        
+
         Returns:
             Parsed dict or None if parsing fails.
         """
@@ -160,106 +169,128 @@ class BaseTool(ABC):
                 yaml_content = response.split("```yaml")[1].split("```")[0]
             elif "```" in response:
                 yaml_content = response.split("```")[1].split("```")[0]
-            
+
             parsed = yaml.safe_load(yaml_content)
             if parsed is None:
-                logger.warning(f"YAML parsing returned None. Response preview: {response[:500]}")
+                logger.warning(
+                    f"YAML parsing returned None. Response preview: {response[:500]}"
+                )
             return parsed
         except yaml.YAMLError as e:
-            logger.warning(f"YAML parsing failed: {e}. Attempting to extract partial data...")
-            
+            logger.warning(
+                f"YAML parsing failed: {e}. Attempting to extract partial data..."
+            )
+
             # Try to extract at least summary and file_summaries
             try:
                 import re
+
                 result = {}
-                
+
                 # Extract summary
-                summary_match = re.search(r'summary:\s*["\']?(.*?)["\']?\s*(?:score:|file_summaries:|\n\w+:)', yaml_content, re.DOTALL)
+                summary_match = re.search(
+                    r'summary:\s*["\']?(.*?)["\']?\s*(?:score:|file_summaries:|\n\w+:)',
+                    yaml_content,
+                    re.DOTALL,
+                )
                 if summary_match:
-                    result['summary'] = summary_match.group(1).strip().strip('"\'')
-                
+                    result["summary"] = summary_match.group(1).strip().strip("\"'")
+
                 # Extract score
-                score_match = re.search(r'score:\s*(\d+)', yaml_content)
+                score_match = re.search(r"score:\s*(\d+)", yaml_content)
                 if score_match:
-                    result['score'] = int(score_match.group(1))
-                
+                    result["score"] = int(score_match.group(1))
+
                 # Extract file_summaries (simplified - just get file and description pairs)
                 file_summaries = []
                 file_pattern = r'-\s*file:\s*["\']?(.*?)["\']?\s*description:\s*["\']?(.*?)["\']?\s*(?=-\s*file:|\nsuggestions:|\Z)'
                 for match in re.finditer(file_pattern, yaml_content, re.DOTALL):
-                    file_summaries.append({
-                        'file': match.group(1).strip().strip('"\''),
-                        'description': match.group(2).strip().strip('"\'')
-                    })
-                
+                    file_summaries.append(
+                        {
+                            "file": match.group(1).strip().strip("\"'"),
+                            "description": match.group(2).strip().strip("\"'"),
+                        }
+                    )
+
                 if file_summaries:
-                    result['file_summaries'] = file_summaries
-                
+                    result["file_summaries"] = file_summaries
+
                 # Always include empty suggestions if parsing failed
-                result['suggestions'] = []
-                
+                result["suggestions"] = []
+
                 if result:
-                    logger.info(f"Extracted partial YAML data: {len(file_summaries)} file summaries")
+                    logger.info(
+                        f"Extracted partial YAML data: {len(file_summaries)} file summaries"
+                    )
                     return result
-                    
+
             except Exception as extract_error:
                 logger.error(f"Failed to extract partial data: {extract_error}")
-            
-            logger.warning(f"Complete YAML parsing failure. Response preview: {response[:500]}")
+
+            logger.warning(
+                f"Complete YAML parsing failure. Response preview: {response[:500]}"
+            )
             return None
         except Exception as e:
-            logger.warning(f"YAML parsing failed: {e}. Response preview: {response[:500]}")
+            logger.warning(
+                f"YAML parsing failed: {e}. Response preview: {response[:500]}"
+            )
             return None
 
     def clone_repo(self, repo_name: str, work_dir: str, branch: str = None) -> bool:
         """Clone repository with fallback logic.
-        
+
         Args:
             repo_name: Repository name (owner/repo)
             work_dir: Directory to clone into
             branch: Branch name (optional, falls back to default branch)
-            
+
         Returns:
             True if clone succeeded, False otherwise
         """
         clone_url = f"https://github.com/{repo_name}.git"
-        
+
         try:
             if branch:
                 subprocess.run(
                     ["git", "clone", "--depth", "1", "-b", branch, clone_url, work_dir],
-                    check=True, capture_output=True
+                    check=True,
+                    capture_output=True,
                 )
                 logger.info(f"Successfully cloned {repo_name} (branch: {branch})")
                 return True
-            
+
             subprocess.run(
                 ["git", "clone", "--depth", "1", clone_url, work_dir],
-                check=True, capture_output=True
+                check=True,
+                capture_output=True,
             )
             logger.info(f"Successfully cloned {repo_name}")
             return True
         except subprocess.CalledProcessError as e:
             if branch:
                 # Fallback to default branch
-                logger.warning(f"Failed to clone branch {branch}, trying default branch")
+                logger.warning(
+                    f"Failed to clone branch {branch}, trying default branch"
+                )
                 try:
                     subprocess.run(
                         ["git", "clone", "--depth", "1", clone_url, work_dir],
-                        check=True, capture_output=True
+                        check=True,
+                        capture_output=True,
                     )
                     logger.info(f"Successfully cloned {repo_name} (default branch)")
                     return True
                 except subprocess.CalledProcessError:
                     logger.error(f"Failed to clone {repo_name}: {e}")
                     return False
-            
+
             logger.error(f"Failed to clone {repo_name}: {e}")
             return False
 
     def get_skills_dir(self) -> Optional[Path]:
         """Get skills directory from current skill.
-        
+
         Returns:
             Path to skills directory if skill has scripts, None otherwise
         """
@@ -268,14 +299,16 @@ class BaseTool(ABC):
             return Path(skill.skill_dir)
         return None
 
-    async def run_agent(self, work_dir: str, prompt: str, skills_dir: Optional[str] = None) -> str:
+    async def run_agent(
+        self, work_dir: str, prompt: str, skills_dir: Optional[str] = None
+    ) -> str:
         """Run agent with standard configuration.
-        
+
         Args:
             work_dir: Working directory for agent
             prompt: Prompt to send to agent
             skills_dir: Optional path to skills directory. If None, auto-detects from current skill.
-            
+
         Returns:
             Agent response text
         """
@@ -315,9 +348,11 @@ class BaseTool(ABC):
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
-            
+
             response = "".join(text_parts)
-            logger.info(f"Agent completed successfully, response length: {len(response)}")
+            logger.info(
+                f"Agent completed successfully, response length: {len(response)}"
+            )
             if skills_path:
                 logger.info(f"Agent used skills from: {skills_path}")
             return response
@@ -331,10 +366,10 @@ class BaseTool(ABC):
         pr_number: int,
         suggestions: List[dict],
         summary_body: str = "",
-        use_suggestion_format: bool = True
+        use_suggestion_format: bool = True,
     ) -> int:
         """Post inline comments with optional GitHub suggestion format.
-        
+
         Args:
             repo_name: Repository name
             pr_number: PR number
@@ -346,7 +381,7 @@ class BaseTool(ABC):
                 - improved_code: Suggested code (optional)
             summary_body: Summary comment body
             use_suggestion_format: Use ```suggestion format for improved_code
-            
+
         Returns:
             Number of comments posted
         """
@@ -381,12 +416,14 @@ class BaseTool(ABC):
                 "path": file_name,
                 "line": line_end if line_end else line_start,
                 "body": body,
-                "side": "RIGHT"
+                "side": "RIGHT",
             }
             if line_end and line_end != line_start:
                 comment["start_line"] = line_start
             comments.append(comment)
-            logger.debug(f"Prepared inline comment for {file_name}:{line_start}-{line_end or line_start}")
+            logger.debug(
+                f"Prepared inline comment for {file_name}:{line_start}-{line_end or line_start}"
+            )
 
         logger.info(f"Prepared {len(comments)} inline comments, skipped {len(skipped)}")
         if skipped:
@@ -394,7 +431,9 @@ class BaseTool(ABC):
 
         if comments:
             try:
-                logger.info(f"Posting {len(comments)} inline comments to PR #{pr_number}")
+                logger.info(
+                    f"Posting {len(comments)} inline comments to PR #{pr_number}"
+                )
                 self.github.create_review_with_comments(
                     repo_name, pr_number, comments, body=summary_body, event="COMMENT"
                 )
@@ -405,6 +444,6 @@ class BaseTool(ABC):
                 if comments:
                     logger.error(f"First comment that failed: {comments[0]}")
                 return 0
-        
+
         logger.warning("No inline comments to post")
         return 0

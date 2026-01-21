@@ -16,15 +16,16 @@ from diff_processor import should_exclude, DEFAULT_EXCLUDE_PATTERNS
 logger = logging.getLogger(__name__)
 
 # Pre-compiled regex patterns for performance
-CHINESE_PATTERN = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]')
-CODE_PATTERN = re.compile(r'```[\s\S]*?```|`[^`]+`')
-FILE_PATTERN = re.compile(r'^diff --git a/(.+?) b/(.+?)$', re.MULTILINE)
-SIMPLE_FILE_PATTERN = re.compile(r'^--- (.+?)$', re.MULTILINE)
+CHINESE_PATTERN = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]")
+CODE_PATTERN = re.compile(r"```[\s\S]*?```|`[^`]+`")
+FILE_PATTERN = re.compile(r"^diff --git a/(.+?) b/(.+?)$", re.MULTILINE)
+SIMPLE_FILE_PATTERN = re.compile(r"^--- (.+?)$", re.MULTILINE)
 
 
 @dataclass
 class DiffChunk:
     """A chunk of diff content with metadata."""
+
     filename: str
     content: str
     tokens: int
@@ -40,66 +41,73 @@ class DiffChunk:
 @dataclass
 class DiffChunkerConfig:
     """Configuration for diff chunking."""
+
     # File priority weights
-    priority_weights: Dict[str, float] = field(default_factory=lambda: {
-        # High priority - core logic
-        "src/": 1.5,
-        "lib/": 1.4,
-        "app/": 1.4,
-        "core/": 1.5,
-        # Medium priority
-        "api/": 1.2,
-        "services/": 1.2,
-        "controllers/": 1.2,
-        "models/": 1.2,
-        # Lower priority
-        "test": 0.7,
-        "spec": 0.7,
-        "__test__": 0.6,
-        "__mock__": 0.5,
-        # Config files
-        "config": 0.8,
-        ".config": 0.6,
-        # Docs
-        "docs/": 0.5,
-        "README": 0.6,
-        ".md": 0.5,
-    })
-    
+    priority_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            # High priority - core logic
+            "src/": 1.5,
+            "lib/": 1.4,
+            "app/": 1.4,
+            "core/": 1.5,
+            # Medium priority
+            "api/": 1.2,
+            "services/": 1.2,
+            "controllers/": 1.2,
+            "models/": 1.2,
+            # Lower priority
+            "test": 0.7,
+            "spec": 0.7,
+            "__test__": 0.6,
+            "__mock__": 0.5,
+            # Config files
+            "config": 0.8,
+            ".config": 0.6,
+            # Docs
+            "docs/": 0.5,
+            "README": 0.6,
+            ".md": 0.5,
+        }
+    )
+
     # Language detection patterns
-    language_patterns: Dict[str, str] = field(default_factory=lambda: {
-        ".py": "python",
-        ".js": "javascript",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".jsx": "javascript",
-        ".go": "go",
-        ".rs": "rust",
-        ".java": "java",
-        ".rb": "ruby",
-        ".php": "php",
-        ".cs": "csharp",
-        ".cpp": "cpp",
-        ".c": "c",
-        ".swift": "swift",
-        ".kt": "kotlin",
-    })
-    
+    language_patterns: Dict[str, str] = field(
+        default_factory=lambda: {
+            ".py": "python",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".jsx": "javascript",
+            ".go": "go",
+            ".rs": "rust",
+            ".java": "java",
+            ".rb": "ruby",
+            ".php": "php",
+            ".cs": "csharp",
+            ".cpp": "cpp",
+            ".c": "c",
+            ".swift": "swift",
+            ".kt": "kotlin",
+        }
+    )
+
     # Security keywords for priority boost
-    security_keywords: FrozenSet[str] = field(default_factory=lambda: frozenset({
-        "auth", "password", "token", "secret", "key", "crypt", "security"
-    }))
-    
+    security_keywords: FrozenSet[str] = field(
+        default_factory=lambda: frozenset(
+            {"auth", "password", "token", "secret", "key", "crypt", "security"}
+        )
+    )
+
     # Priority boost factors
     additions_boost: float = 1.1
     security_boost: float = 1.3
     truncated_penalty: float = 0.8
-    
+
     # Token estimation (characters per token)
     chinese_chars_per_token: float = 1.5
     english_chars_per_token: float = 4.0
     code_chars_per_token: float = 3.5
-    
+
     # Minimum useful chunk size in tokens
     min_chunk_tokens: int = 500
 
@@ -115,10 +123,10 @@ class DiffChunker:
         self,
         max_tokens: int = 15000,
         exclude_patterns: Optional[List[str]] = None,
-        config: Optional[DiffChunkerConfig] = None
+        config: Optional[DiffChunkerConfig] = None,
     ) -> None:
         """Initialize chunker.
-        
+
         Args:
             max_tokens: Maximum tokens for diff content
             exclude_patterns: File patterns to exclude (uses defaults if None)
@@ -130,10 +138,10 @@ class DiffChunker:
 
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for mixed Chinese/English/code content.
-        
+
         Uses different ratios for different content types:
         - Chinese: ~1.5 characters per token
-        - English: ~4 characters per token  
+        - English: ~4 characters per token
         - Code: ~3.5 characters per token
         """
         if not text:
@@ -158,7 +166,7 @@ class DiffChunker:
 
     def _calculate_priority(self, filename: str, content: str) -> float:
         """Calculate priority score for a file.
-        
+
         Higher priority = more important to review.
         """
         priority = 1.0
@@ -177,7 +185,10 @@ class DiffChunker:
 
         # Boost files with security-related changes
         content_lower = content.lower()
-        if any(kw in filename_lower or kw in content_lower for kw in self.config.security_keywords):
+        if any(
+            kw in filename_lower or kw in content_lower
+            for kw in self.config.security_keywords
+        ):
             priority *= self.config.security_boost
 
         return priority
@@ -203,10 +214,10 @@ class DiffChunker:
 
     def parse_diff(self, diff: str) -> List[DiffChunk]:
         """Parse diff into prioritized chunks.
-        
+
         Args:
             diff: Raw diff string
-            
+
         Returns:
             List of DiffChunk objects sorted by priority
         """
@@ -234,14 +245,16 @@ class DiffChunker:
                 language = self._detect_language(filename)
                 change_type = self._detect_change_type(content)
 
-                chunks.append(DiffChunk(
-                    filename=filename,
-                    content=content,
-                    tokens=tokens,
-                    priority=priority,
-                    language=language,
-                    change_type=change_type
-                ))
+                chunks.append(
+                    DiffChunk(
+                        filename=filename,
+                        content=content,
+                        tokens=tokens,
+                        priority=priority,
+                        language=language,
+                        change_type=change_type,
+                    )
+                )
             i += 3
 
         # Fallback: simple parsing if git diff format not detected
@@ -272,32 +285,31 @@ class DiffChunker:
                 tokens = self._estimate_tokens(content)
                 priority = self._calculate_priority(filename, content)
 
-                chunks.append(DiffChunk(
-                    filename=filename,
-                    content=content,
-                    tokens=tokens,
-                    priority=priority,
-                    language=self._detect_language(filename),
-                    change_type=self._detect_change_type(content)
-                ))
+                chunks.append(
+                    DiffChunk(
+                        filename=filename,
+                        content=content,
+                        tokens=tokens,
+                        priority=priority,
+                        language=self._detect_language(filename),
+                        change_type=self._detect_change_type(content),
+                    )
+                )
 
         return chunks
 
     def chunk_diff(
-        self,
-        diff: str,
-        max_tokens: Optional[int] = None,
-        max_files: int = 15
+        self, diff: str, max_tokens: Optional[int] = None, max_files: int = 15
     ) -> Tuple[List[DiffChunk], List[DiffChunk]]:
         """Intelligently chunk diff to fit token limits.
-        
+
         Uses priority-based selection to include most important files first.
-        
+
         Args:
             diff: Raw diff string
             max_tokens: Maximum tokens (default: self.max_tokens)
             max_files: Maximum number of files to include
-            
+
         Returns:
             Tuple of (included_chunks, excluded_chunks)
         """
@@ -355,7 +367,7 @@ class DiffChunker:
             tokens=max_tokens,
             priority=chunk.priority * self.config.truncated_penalty,
             language=chunk.language,
-            change_type=chunk.change_type
+            change_type=chunk.change_type,
         )
 
     def build_diff_string(self, chunks: List[DiffChunk]) -> str:

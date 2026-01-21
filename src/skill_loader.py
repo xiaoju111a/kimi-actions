@@ -25,12 +25,15 @@ SKILLS_DIR = Path(__file__).parent / "skills"
 @dataclass
 class Skill:
     """A loaded skill."""
+
     name: str
     description: str
     version: str = "1.0.0"
     triggers: List[str] = field(default_factory=list)
     instructions: str = ""
-    scripts: Dict[str, Path] = field(default_factory=dict)  # Keep for checking if scripts exist
+    scripts: Dict[str, Path] = field(
+        default_factory=dict
+    )  # Keep for checking if scripts exist
     references: Dict[str, str] = field(default_factory=dict)
     path: Optional[Path] = None
     skill_dir: Optional[Path] = None  # Directory containing skill scripts for Agent SDK
@@ -49,15 +52,15 @@ class Skill:
 
 def parse_skill_md(content: str) -> Tuple[Dict[str, Any], str]:
     """Parse SKILL.md content into metadata and instructions.
-    
+
     Args:
         content: Raw SKILL.md file content
-        
+
     Returns:
         Tuple of (metadata dict, instructions string)
     """
     # Extract YAML frontmatter
-    match = re.match(r'^---\s*\n(.*?)\n---\s*\n(.*)', content, re.DOTALL)
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", content, re.DOTALL)
 
     if not match:
         return {}, content
@@ -89,7 +92,7 @@ def load_skill_from_dir(skill_dir: Path) -> Optional[Skill]:
             version=metadata.get("version", "1.0.0"),
             triggers=metadata.get("triggers", []),
             instructions=instructions,
-            path=skill_dir
+            path=skill_dir,
         )
 
         # Load scripts
@@ -132,9 +135,7 @@ def load_builtin_skills() -> Dict[str, Skill]:
 
 
 def load_custom_skills_from_repo(
-    github_client: Any,
-    repo_name: str,
-    ref: Optional[str] = None
+    github_client: Any, repo_name: str, ref: Optional[str] = None
 ) -> Dict[str, Skill]:
     """Load custom skills from repository's .kimi/skills/ directory."""
     skills: Dict[str, Skill] = {}
@@ -160,9 +161,7 @@ def load_custom_skills_from_repo(
 
 
 def _load_skill_from_github(
-    repo: Any,
-    skill_path: str,
-    ref: Optional[str] = None
+    repo: Any, skill_path: str, ref: Optional[str] = None
 ) -> Optional[Skill]:
     """Load a skill from GitHub repository."""
     try:
@@ -177,7 +176,7 @@ def _load_skill_from_github(
             description=metadata.get("description", ""),
             version=metadata.get("version", "1.0.0"),
             triggers=metadata.get("triggers", []),
-            instructions=instructions
+            instructions=instructions,
         )
 
         # Load references
@@ -186,7 +185,9 @@ def _load_skill_from_github(
             for ref_file in refs_contents:
                 if ref_file.name.endswith(".md"):
                     ref_content = repo.get_contents(ref_file.path, ref=ref)
-                    skill.references[ref_file.name[:-3]] = ref_content.decoded_content.decode("utf-8")
+                    skill.references[ref_file.name[:-3]] = (
+                        ref_content.decoded_content.decode("utf-8")
+                    )
         except Exception:
             pass
 
@@ -200,11 +201,11 @@ def _load_skill_from_github(
 
 class SkillManager:
     """Manages skill loading and execution.
-    
+
     Skills are loaded from two sources:
     1. Built-in skills from src/skills/
     2. Custom skills from repository's .kimi/skills/
-    
+
     Custom skills with the same name as built-in skills will override them.
     """
 
@@ -218,13 +219,10 @@ class SkillManager:
         self.builtin_skills = load_builtin_skills()
 
     def load_from_repo(
-        self,
-        github_client: Any,
-        repo_name: str,
-        ref: Optional[str] = None
+        self, github_client: Any, repo_name: str, ref: Optional[str] = None
     ) -> None:
         """Load custom skills from repository.
-        
+
         Custom skills override built-in skills with the same name.
         """
         self.custom_skills = load_custom_skills_from_repo(github_client, repo_name, ref)
@@ -243,7 +241,7 @@ class SkillManager:
 
     def get_skill(self, name: str) -> Optional[Skill]:
         """Get a skill by name.
-        
+
         Priority: custom > built-in
         """
         # Check custom first
@@ -258,7 +256,7 @@ class SkillManager:
 
     def list_skills(self) -> Dict[str, Dict[str, Any]]:
         """List all available skills with their source.
-        
+
         Returns:
             Dict mapping skill name to {skill, source, overridden}
         """
@@ -268,7 +266,7 @@ class SkillManager:
             result[name] = {
                 "skill": skill,
                 "source": "builtin",
-                "overridden": name in self.custom_skills
+                "overridden": name in self.custom_skills,
             }
 
         for name, skill in self.custom_skills.items():
@@ -276,11 +274,7 @@ class SkillManager:
                 result[name]["skill"] = skill
                 result[name]["source"] = "custom (override)"
             else:
-                result[name] = {
-                    "skill": skill,
-                    "source": "custom",
-                    "overridden": False
-                }
+                result[name] = {"skill": skill, "source": "custom", "overridden": False}
 
         return result
 
@@ -292,7 +286,8 @@ class SkillManager:
         """Find skills by trigger keyword."""
         trigger_lower = trigger.lower()
         return [
-            s for s in self.skills.values()
+            s
+            for s in self.skills.values()
             if trigger_lower in [t.lower() for t in s.triggers]
         ]
 
@@ -309,6 +304,8 @@ class SkillManager:
             lang = context["language"].lower()
             ref_name = f"{lang}-best-practices"
             if ref_name in skill.references:
-                prompt_parts.append(f"\n## {lang.title()} Reference\n{skill.references[ref_name]}")
+                prompt_parts.append(
+                    f"\n## {lang.title()} Reference\n{skill.references[ref_name]}"
+                )
 
         return "\n\n".join(prompt_parts)

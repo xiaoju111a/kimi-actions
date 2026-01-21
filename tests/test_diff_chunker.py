@@ -115,8 +115,20 @@ diff --git a/b.py b/b.py
 
     def test_build_diff_string(self, chunker):
         chunks = [
-            DiffChunk(filename="main.py", content="+hello", tokens=1, language="python", change_type="added"),
-            DiffChunk(filename="test.js", content="-bye", tokens=1, language="javascript", change_type="deleted"),
+            DiffChunk(
+                filename="main.py",
+                content="+hello",
+                tokens=1,
+                language="python",
+                change_type="added",
+            ),
+            DiffChunk(
+                filename="test.js",
+                content="-bye",
+                tokens=1,
+                language="javascript",
+                change_type="deleted",
+            ),
         ]
         result = chunker.build_diff_string(chunks)
 
@@ -127,10 +139,7 @@ diff --git a/b.py b/b.py
 
     def test_truncate_chunk(self, chunker):
         chunk = DiffChunk(
-            filename="big.py",
-            content="x" * 10000,
-            tokens=3000,
-            priority=1.0
+            filename="big.py", content="x" * 10000, tokens=3000, priority=1.0
         )
         truncated = chunker._truncate_chunk(chunk, 500)
 

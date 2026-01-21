@@ -18,7 +18,7 @@ class Ask(BaseTool):
 
     def run(self, repo_name: str, pr_number: int, **kwargs) -> str:
         """Answer a question about the PR.
-        
+
         Args:
             repo_name: Repository name
             pr_number: PR number
@@ -27,7 +27,7 @@ class Ask(BaseTool):
         """
         question = kwargs.get("question", "")
         inline = kwargs.get("inline", False)
-        
+
         if not question:
             return "Please provide a question. Use `/ask <question>` format."
 
@@ -40,22 +40,26 @@ class Ask(BaseTool):
 
         # Get skill
         skill = self.get_skill()
-        skill_instructions = skill.instructions if skill else "Answer questions about the PR."
+        skill_instructions = (
+            skill.instructions if skill else "Answer questions about the PR."
+        )
 
         # Clone repo and run agent
         with tempfile.TemporaryDirectory() as work_dir:
             if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
                 return "❌ Failed to clone repository"
-            
+
             try:
-                response = asyncio.run(self._run_agent_ask(
-                    work_dir=work_dir,
-                    pr_title=pr.title,
-                    pr_body=pr.body or "",
-                    diff=compressed_diff,
-                    question=question,
-                    skill_instructions=skill_instructions
-                ))
+                response = asyncio.run(
+                    self._run_agent_ask(
+                        work_dir=work_dir,
+                        pr_title=pr.title,
+                        pr_body=pr.body or "",
+                        diff=compressed_diff,
+                        question=question,
+                        skill_instructions=skill_instructions,
+                    )
+                )
 
                 return self._format_response(response, inline)
 
@@ -70,7 +74,7 @@ class Ask(BaseTool):
         pr_body: str,
         diff: str,
         question: str,
-        skill_instructions: str
+        skill_instructions: str,
     ) -> str:
         """Run agent to answer the question."""
         try:
@@ -107,11 +111,11 @@ Be concise and helpful.
         try:
             # Use auto-detected skills_dir from BaseTool
             skills_path = self.get_skills_dir()
-            
+
             # Convert to KaosPath for Agent SDK
             work_dir_kaos = KaosPath(work_dir) if work_dir else KaosPath.cwd()
             skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
-            
+
             async with await Session.create(
                 work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,

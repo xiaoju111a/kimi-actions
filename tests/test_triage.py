@@ -6,23 +6,26 @@ import sys
 import os
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 class MockLabel:
     """Mock GitHub Label object."""
+
     def __init__(self, name: str):
         self.name = name
 
 
 class MockUser:
     """Mock GitHub User object."""
+
     def __init__(self, login: str = "testuser"):
         self.login = login
 
 
 class MockIssue:
     """Mock GitHub Issue object."""
+
     def __init__(
         self,
         title: str = "App crashes when clicking login button",
@@ -30,7 +33,7 @@ class MockIssue:
         number: int = 123,
         state: str = "open",
         labels: list = None,
-        comments: int = 0
+        comments: int = 0,
     ):
         self.title = title
         self.body = body
@@ -51,15 +54,25 @@ class MockIssue:
 
 class MockGitHubClientForIssue:
     """Mock GitHub client with Issue support."""
+
     def __init__(self):
         self.client = Mock()
         self.posted_comments = []
         self.applied_labels = []
         self.reactions = []
         self._issue = MockIssue()
-        self._repo_labels = ["bug", "feature", "enhancement", "question",
-                            "documentation", "help wanted", "good first issue",
-                            "priority: high", "priority: medium", "priority: low"]
+        self._repo_labels = [
+            "bug",
+            "feature",
+            "enhancement",
+            "question",
+            "documentation",
+            "help wanted",
+            "good first issue",
+            "priority: high",
+            "priority: medium",
+            "priority: low",
+        ]
 
     def get_issue(self, repo_name: str, issue_number: int):
         return self._issue
@@ -70,7 +83,9 @@ class MockGitHubClientForIssue:
     def add_issue_labels(self, repo_name: str, issue_number: int, labels: list):
         self.applied_labels.extend(labels)
 
-    def add_issue_reaction(self, repo_name: str, issue_number: int, comment_id: int, reaction: str):
+    def add_issue_reaction(
+        self, repo_name: str, issue_number: int, comment_id: int, reaction: str
+    ):
         self.reactions.append(reaction)
 
     def get_repo_labels(self, repo_name: str) -> list:
@@ -80,7 +95,7 @@ class MockGitHubClientForIssue:
 @pytest.fixture
 def mock_action_config():
     """Create mock action config."""
-    with patch('tools.base.get_action_config') as mock:
+    with patch("tools.base.get_action_config") as mock:
         config = Mock()
         config.model = "kimi-k2-turbo-preview"
         config.review_level = "normal"
@@ -102,12 +117,14 @@ class TestTriageIntegration:
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Triage the issue", scripts={}
-        ))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage the issue", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "bug", "priority": "high", "labels": ["bug", "priority: high"], "confidence": "high", "summary": "App crashes on login", "reason": "Clear bug report"}'
             result = triage.run("owner/repo", 123, apply_labels=True)
@@ -120,15 +137,22 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         github = MockGitHubClientForIssue()
-        github._issue = MockIssue(title="Add dark mode support", body="It would be great if the app supported dark mode.")
+        github._issue = MockIssue(
+            title="Add dark mode support",
+            body="It would be great if the app supported dark mode.",
+        )
         triage = Triage(github)
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "feature", "priority": "medium", "labels": ["feature"], "confidence": "high", "summary": "Dark mode request", "reason": "New feature"}'
             result = triage.run("owner/repo", 124, apply_labels=True)
@@ -140,15 +164,22 @@ class TestTriageIntegration:
         from tools.triage import Triage
 
         github = MockGitHubClientForIssue()
-        github._issue = MockIssue(title="How do I configure the API?", body="I'm trying to set up the API but can't find docs.")
+        github._issue = MockIssue(
+            title="How do I configure the API?",
+            body="I'm trying to set up the API but can't find docs.",
+        )
         triage = Triage(github)
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "question", "priority": "low", "labels": ["question"], "confidence": "high", "summary": "API config question", "reason": "User asking for help"}'
             result = triage.run("owner/repo", 125, apply_labels=True)
@@ -164,10 +195,14 @@ class TestTriageIntegration:
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "bug", "priority": "high", "labels": ["bug"], "confidence": "high", "summary": "Bug", "reason": "Bug"}'
             triage.run("owner/repo", 126, apply_labels=False)
@@ -183,10 +218,14 @@ class TestTriageIntegration:
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "bug", "priority": "high", "labels": ["bug", "invalid-label", "nonexistent"], "confidence": "high", "summary": "Bug", "reason": "Bug"}'
             triage.run("owner/repo", 127, apply_labels=True)
@@ -205,10 +244,14 @@ class TestTriageIntegration:
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = '{"type": "unknown", "priority": "medium", "labels": [], "confidence": "low", "summary": "Unclear", "reason": "No body"}'
             result = triage.run("owner/repo", 128, apply_labels=True)
@@ -224,10 +267,14 @@ class TestTriageIntegration:
         triage.load_context = Mock()
         triage.repo_config = None
         triage.skill_manager = Mock()
-        triage.skill_manager.get_skill = Mock(return_value=Mock(instructions="Triage", scripts={}))
+        triage.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Triage", scripts={})
+        )
 
-        with patch('subprocess.run') as mock_subprocess, \
-             patch('tools.triage.asyncio.run') as mock_asyncio:
+        with (
+            patch("subprocess.run") as mock_subprocess,
+            patch("tools.triage.asyncio.run") as mock_asyncio,
+        ):
             mock_subprocess.run.return_value = Mock(returncode=0)
             mock_asyncio.return_value = "This is not valid JSON"
             result = triage.run("owner/repo", 129, apply_labels=True)
@@ -348,7 +395,7 @@ class TestTriageFormatResult:
             "confidence": "high",
             "summary": "Test bug",
             "labels": ["bug", "priority: high"],
-            "reason": "Test reason"
+            "reason": "Test reason",
         }
         result = triage._format_result(result_dict, applied=True)
 
@@ -369,7 +416,7 @@ class TestTriageFormatResult:
             "confidence": "medium",
             "summary": "Test feature",
             "labels": ["feature"],
-            "reason": "Test reason"
+            "reason": "Test reason",
         }
         result = triage._format_result(result_dict, applied=False)
 
@@ -388,7 +435,7 @@ class TestTriageFormatResult:
             "confidence": "high",
             "summary": "Critical bug",
             "labels": ["bug"],
-            "reason": "Test reason"
+            "reason": "Test reason",
         }
         result = triage._format_result(result_dict, applied=True)
 

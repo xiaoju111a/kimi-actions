@@ -12,8 +12,7 @@ from tools import Reviewer, Describe, Improve, Ask, Labels, Triage
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -26,33 +25,33 @@ def get_input(name: str, default: str = None) -> str:
 
 def parse_command(comment_body: str) -> tuple:
     """Parse command from comment body.
-    
+
     Supports commands at the start of the body or after quoted content (> lines).
-    
+
     Returns:
         Tuple of (command, args) or (None, None) if no command found.
     """
     # First try: command at the very start
-    pattern = r'^/(\w+)(?:\s+(.*))?$'
+    pattern = r"^/(\w+)(?:\s+(.*))?$"
     match = re.match(pattern, comment_body.strip(), re.DOTALL)
     if match:
         command = match.group(1).lower()
         args = match.group(2).strip() if match.group(2) else ""
         return command, args
-    
+
     # Second try: command after quoted lines (for inline comment replies)
     # Remove all lines starting with > (quotes)
-    lines = comment_body.strip().split('\n')
-    non_quote_lines = [line for line in lines if not line.strip().startswith('>')]
-    cleaned_body = '\n'.join(non_quote_lines).strip()
-    
+    lines = comment_body.strip().split("\n")
+    non_quote_lines = [line for line in lines if not line.strip().startswith(">")]
+    cleaned_body = "\n".join(non_quote_lines).strip()
+
     if cleaned_body:
         match = re.match(pattern, cleaned_body, re.DOTALL)
         if match:
             command = match.group(1).lower()
             args = match.group(2).strip() if match.group(2) else ""
             return command, args
-    
+
     return None, None
 
 
@@ -103,7 +102,9 @@ def handle_pr_event(event: dict, config: ActionConfig):
     except Exception as e:
         logger.error(f"Error processing PR: {e}")
         try:
-            github.post_comment(repo_name, pr_number, f"❌ Error processing PR: {str(e)}")
+            github.post_comment(
+                repo_name, pr_number, f"❌ Error processing PR: {str(e)}"
+            )
         except Exception:
             pass
 
@@ -154,17 +155,23 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
             else:
                 ask = Ask(github)
                 # Extract only the last few lines of diff_hunk (the relevant code)
-                hunk_lines = diff_hunk.strip().split('\n')
+                hunk_lines = diff_hunk.strip().split("\n")
                 # Take last 5 lines or less, skip the @@ header
-                relevant_lines = [line for line in hunk_lines if not line.startswith('@@')][-5:]
-                code_context = '\n'.join(relevant_lines)
-                
+                relevant_lines = [
+                    line for line in hunk_lines if not line.startswith("@@")
+                ][-5:]
+                code_context = "\n".join(relevant_lines)
+
                 # Pass code context to Kimi but don't show in output (GitHub UI already shows it)
                 context_question = f"Regarding `{file_path}` line {comment_line}:\n```diff\n{code_context}\n```\n\n{args}"
-                result = ask.run(repo_name, pr_number, question=context_question, inline=True)
+                result = ask.run(
+                    repo_name, pr_number, question=context_question, inline=True
+                )
         else:
             # For other commands, just run normally
-            result = f"ℹ️ Command `/{command}` is better used in the main PR comment area."
+            result = (
+                f"ℹ️ Command `/{command}` is better used in the main PR comment area."
+            )
 
     except Exception as e:
         logger.error(f"Error handling inline command /{command}: {e}")
@@ -178,7 +185,9 @@ def handle_review_comment_event(event: dict, config: ActionConfig):
         except Exception as e:
             logger.error(f"Failed to reply to comment: {e}")
             # Fallback to regular comment
-            github.post_comment(repo_name, pr_number, f"> /{command} {args}\n\n{result}")
+            github.post_comment(
+                repo_name, pr_number, f"> /{command} {args}\n\n{result}"
+            )
 
 
 def handle_comment_event(event: dict, config: ActionConfig):
@@ -223,7 +232,9 @@ def handle_comment_event(event: dict, config: ActionConfig):
     try:
         if command == "review":
             reviewer = Reviewer(github)
-            result = reviewer.run(repo_name, pr_number, inline=True, command_quote="/review")
+            result = reviewer.run(
+                repo_name, pr_number, inline=True, command_quote="/review"
+            )
             # Don't add quote again - reviewer already includes it
             if result:
                 github.post_comment(repo_name, pr_number, result)
@@ -243,7 +254,9 @@ def handle_comment_event(event: dict, config: ActionConfig):
             original_command = "/improve"
             if args:
                 original_command += f" {args}"
-            result = improve.run(repo_name, pr_number, inline=True, command_quote=original_command)
+            result = improve.run(
+                repo_name, pr_number, inline=True, command_quote=original_command
+            )
             # Don't add quote again - improve already includes it
             if result:
                 github.post_comment(repo_name, pr_number, result)
@@ -256,34 +269,40 @@ def handle_comment_event(event: dict, config: ActionConfig):
                 # Check if this is a reply to a review comment (inline comment thread)
                 comment_id = comment.get("id")
                 review_context = None
-                
+
                 try:
-                    review_context = github.get_review_comment_context(repo_name, pr_number, comment_id)
+                    review_context = github.get_review_comment_context(
+                        repo_name, pr_number, comment_id
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to get review comment context: {e}")
                     review_context = None
-                
+
                 if review_context:
                     # This is a reply in a review comment thread - we have code context!
                     file_path = review_context.get("path", "")
                     line = review_context.get("line", 0)
                     diff_hunk = review_context.get("diff_hunk", "")
-                    
+
                     # Extract relevant code lines from diff_hunk
-                    hunk_lines = diff_hunk.strip().split('\n')
-                    relevant_lines = [line for line in hunk_lines if not line.startswith('@@')][-5:]
-                    code_context = '\n'.join(relevant_lines)
-                    
+                    hunk_lines = diff_hunk.strip().split("\n")
+                    relevant_lines = [
+                        line for line in hunk_lines if not line.startswith("@@")
+                    ][-5:]
+                    code_context = "\n".join(relevant_lines)
+
                     # Add code context to the question
                     context_question = f"Regarding `{file_path}` line {line}:\n```diff\n{code_context}\n```\n\n{args}"
-                    
+
                     ask = Ask(github)
-                    result = ask.run(repo_name, pr_number, question=context_question, inline=True)
+                    result = ask.run(
+                        repo_name, pr_number, question=context_question, inline=True
+                    )
                 else:
                     # Regular PR comment without code context
                     ask = Ask(github)
                     result = ask.run(repo_name, pr_number, question=args, inline=False)
-                    
+
                     # Add a note if this seems to be in a conversation thread
                     # (heuristic: if the comment body contains quoted text)
                     if ">" in comment_body:
@@ -358,7 +377,9 @@ def handle_issue_event(event: dict, config: ActionConfig):
         except Exception as e:
             logger.error(f"Error triaging issue: {e}")
             try:
-                github.post_issue_comment(repo_name, issue_number, f"❌ Error triaging issue: {str(e)}")
+                github.post_issue_comment(
+                    repo_name, issue_number, f"❌ Error triaging issue: {str(e)}"
+                )
             except Exception:
                 pass
 

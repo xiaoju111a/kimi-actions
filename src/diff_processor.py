@@ -11,19 +11,51 @@ from pathlib import PurePath
 # Non-text file suffixes (binary files to skip)
 NON_TEXT_SUFFIXES = {
     # Images
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".ico",
+    ".svg",
     # Documents
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
     # Archives
-    ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2",
+    ".zip",
+    ".rar",
+    ".7z",
+    ".tar",
+    ".gz",
+    ".bz2",
     # Audio/Video
-    ".mp3", ".wav", ".mp4", ".avi", ".mov",
+    ".mp3",
+    ".wav",
+    ".mp4",
+    ".avi",
+    ".mov",
     # Fonts
-    ".ttf", ".otf", ".woff", ".woff2",
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
     # Binaries
-    ".exe", ".dll", ".so", ".dylib", ".pyc", ".class", ".jar",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".pyc",
+    ".class",
+    ".jar",
     # Database
-    ".sqlite", ".db",
+    ".sqlite",
+    ".db",
 }
 
 # Default exclude patterns
@@ -46,11 +78,11 @@ def is_binary_file(filename: str) -> bool:
 
 def should_exclude(filename: str, patterns: list = None) -> bool:
     """Check if file should be excluded from review.
-    
+
     Args:
         filename: File path to check
         patterns: List of glob patterns to exclude
-        
+
     Returns:
         True if file should be excluded
     """
@@ -70,11 +102,11 @@ def should_exclude(filename: str, patterns: list = None) -> bool:
 
 def filter_files(files: list, patterns: list = None) -> list:
     """Filter out excluded files.
-    
+
     Args:
         files: List of file paths
         patterns: List of glob patterns to exclude
-        
+
     Returns:
         Filtered list of files
     """

@@ -31,7 +31,7 @@ class Reviewer(BaseTool):
 
     def run(self, repo_name: str, pr_number: int, **kwargs) -> str:
         """Run code review on a PR.
-        
+
         Automatically detects if incremental review should be used based on:
         - Existence of previous review
         - Age of previous review (<7 days)
@@ -47,13 +47,15 @@ class Reviewer(BaseTool):
         incremental = self._should_use_incremental_review(repo_name, pr_number)
 
         if incremental:
-            compressed_diff, included_chunks, excluded_chunks, last_sha = self._get_incremental_diff(
-                repo_name, pr_number
+            compressed_diff, included_chunks, excluded_chunks, last_sha = (
+                self._get_incremental_diff(repo_name, pr_number)
             )
             if compressed_diff is None:
                 return "✅ No new changes since last review."
         else:
-            compressed_diff, included_chunks, excluded_chunks = self.get_diff(repo_name, pr_number)
+            compressed_diff, included_chunks, excluded_chunks = self.get_diff(
+                repo_name, pr_number
+            )
 
         if not compressed_diff:
             return "No changes to review."
@@ -70,13 +72,17 @@ class Reviewer(BaseTool):
         with tempfile.TemporaryDirectory() as work_dir:
             if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
                 return f"### 🌗 Pull request overview\n\n❌ Failed to clone repository\n\n{self.format_footer()}"
-            
+
             try:
-                response = asyncio.run(self._run_agent_review(
-                    work_dir=work_dir, system_prompt=system_prompt,
-                    pr_title=pr.title, pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
-                    diff=compressed_diff
-                ))
+                response = asyncio.run(
+                    self._run_agent_review(
+                        work_dir=work_dir,
+                        system_prompt=system_prompt,
+                        pr_title=pr.title,
+                        pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
+                        diff=compressed_diff,
+                    )
+                )
             except Exception as e:
                 logger.error(f"Review failed: {e}")
                 return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
@@ -84,49 +90,75 @@ class Reviewer(BaseTool):
         suggestions = self._parse_suggestions(response)
         review_options = ReviewOptions(
             bug=self.repo_config.enable_bug if self.repo_config else True,
-            performance=self.repo_config.enable_performance if self.repo_config else True,
-            security=self.repo_config.enable_security if self.repo_config else True
+            performance=self.repo_config.enable_performance
+            if self.repo_config
+            else True,
+            security=self.repo_config.enable_security if self.repo_config else True,
         )
-        suggestion_service = SuggestionService(SuggestionControl(
-            max_suggestions=self.config.review.num_max_findings,
-            severity_level_filter=SeverityLevel.LOW
-        ))
+        suggestion_service = SuggestionService(
+            SuggestionControl(
+                max_suggestions=self.config.review.num_max_findings,
+                severity_level_filter=SeverityLevel.LOW,
+            )
+        )
         filtered, discarded = suggestion_service.process_suggestions(
             suggestions, review_options, compressed_diff
         )
         logger.info(f"Suggestions: {len(suggestions)} parsed, {len(filtered)} filtered")
 
-        total_files = len(included_chunks) if included_chunks else len(set(s.relevant_file for s in filtered if s.relevant_file))
+        total_files = (
+            len(included_chunks)
+            if included_chunks
+            else len(set(s.relevant_file for s in filtered if s.relevant_file))
+        )
         posted_count = 0
         if inline and filtered:
             summary = self._format_inline_summary(
-                response, filtered, len(filtered), total_files=total_files,
-                included_chunks=included_chunks, incremental=incremental,
-                current_sha=pr.head.sha, command_quote=command_quote,
-                file_summaries=file_summaries
+                response,
+                filtered,
+                len(filtered),
+                total_files=total_files,
+                included_chunks=included_chunks,
+                incremental=incremental,
+                current_sha=pr.head.sha,
+                command_quote=command_quote,
+                file_summaries=file_summaries,
             )
-            posted_count = self._post_inline_comments(repo_name, pr_number, filtered, summary_body=summary)
+            posted_count = self._post_inline_comments(
+                repo_name, pr_number, filtered, summary_body=summary
+            )
             if posted_count > 0:
                 return ""
 
         summary = self._format_inline_summary(
-            response, filtered, posted_count, total_files=total_files,
-            included_chunks=included_chunks, incremental=incremental,
-            current_sha=pr.head.sha, command_quote=command_quote,
-            file_summaries=file_summaries
+            response,
+            filtered,
+            posted_count,
+            total_files=total_files,
+            included_chunks=included_chunks,
+            incremental=incremental,
+            current_sha=pr.head.sha,
+            command_quote=command_quote,
+            file_summaries=file_summaries,
         )
         return summary
 
-
     async def _run_agent_review(
-        self, work_dir: str, system_prompt: str, pr_title: str, pr_branch: str, diff: str
+        self,
+        work_dir: str,
+        system_prompt: str,
+        pr_title: str,
+        pr_branch: str,
+        diff: str,
     ) -> str:
         """Run agent to perform code review."""
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
             from kaos.path import KaosPath
         except ImportError:
-            return '```yaml\nsuggestions: []\nsummary: "kimi-agent-sdk not installed"\n```'
+            return (
+                '```yaml\nsuggestions: []\nsummary: "kimi-agent-sdk not installed"\n```'
+            )
 
         api_key = self.setup_agent_env()
         if not api_key:
@@ -207,14 +239,16 @@ suggestions:
 
         try:
             skills_path = self.get_skills_dir()
-            
+
             # Convert work_dir string to KaosPath for Agent SDK
             work_dir_kaos = KaosPath(work_dir) if work_dir else KaosPath.cwd()
             skills_dir_kaos = KaosPath(skills_path) if skills_path else None
-            
+
             async with await Session.create(
-                work_dir=work_dir_kaos, model=self.AGENT_MODEL,
-                yolo=True, max_steps_per_turn=50,
+                work_dir=work_dir_kaos,
+                model=self.AGENT_MODEL,
+                yolo=True,
+                max_steps_per_turn=50,
                 skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(review_prompt):
@@ -222,7 +256,7 @@ suggestions:
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
-            
+
             if skills_path:
                 logger.info(f"Review used skills from: {skills_path}")
             return "".join(text_parts)
@@ -249,18 +283,20 @@ suggestions:
         if not diff:
             return None, [], [], last_sha
 
-        included, excluded = self.chunker.chunk_diff(diff, max_files=self.config.max_files)
+        included, excluded = self.chunker.chunk_diff(
+            diff, max_files=self.config.max_files
+        )
         compressed = self.chunker.build_diff_string(included)
         return compressed, included, excluded, last_sha
 
     def _should_use_incremental_review(self, repo_name: str, pr_number: int) -> bool:
         """Determine if incremental review should be used.
-        
+
         Incremental review is used when:
         1. There's a previous bot review comment
         2. The previous review was recent (within 7 days)
         3. There are new commits since the last review
-        
+
         Returns:
             True if incremental review should be used, False otherwise
         """
@@ -269,61 +305,79 @@ suggestions:
             if not last_review:
                 logger.info("No previous review found, using full review")
                 return False
-            
+
             # Check if review is recent (within 7 days)
             from datetime import datetime, timedelta
+
             review_age = datetime.now() - last_review["created_at"].replace(tzinfo=None)
             if review_age > timedelta(days=7):
-                logger.info(f"Previous review is {review_age.days} days old, using full review")
+                logger.info(
+                    f"Previous review is {review_age.days} days old, using full review"
+                )
                 return False
-            
+
             # Check if there are new commits
             last_sha = last_review["sha"]
             new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
-            
+
             if not new_commits:
                 logger.info("No new commits since last review")
                 return True  # Will return "no changes" message
-            
-            logger.info(f"Found {len(new_commits)} new commits since last review, using incremental review")
+
+            logger.info(
+                f"Found {len(new_commits)} new commits since last review, using incremental review"
+            )
             return True
-            
+
         except Exception as e:
             logger.warning(f"Failed to determine incremental review status: {e}")
             return False
 
     def _post_inline_comments(
-        self, repo_name: str, pr_number: int, suggestions: List[CodeSuggestion],
-        summary_body: str = ""
+        self,
+        repo_name: str,
+        pr_number: int,
+        suggestions: List[CodeSuggestion],
+        summary_body: str = "",
     ):
         """Post inline comments with GitHub native suggestion format."""
         # Convert CodeSuggestion objects to dict format expected by BaseTool
         suggestion_dicts = []
         for s in suggestions:
-            suggestion_dicts.append({
-                "relevant_file": s.relevant_file,
-                "relevant_lines_start": s.relevant_lines_start,
-                "relevant_lines_end": s.relevant_lines_end,
-                "suggestion_content": s.suggestion_content,
-                "improved_code": s.improved_code
-            })
-        
+            suggestion_dicts.append(
+                {
+                    "relevant_file": s.relevant_file,
+                    "relevant_lines_start": s.relevant_lines_start,
+                    "relevant_lines_end": s.relevant_lines_end,
+                    "suggestion_content": s.suggestion_content,
+                    "improved_code": s.improved_code,
+                }
+            )
+
         return self.post_inline_comments(
-            repo_name, pr_number, suggestion_dicts,
-            summary_body=summary_body, use_suggestion_format=True
+            repo_name,
+            pr_number,
+            suggestion_dicts,
+            summary_body=summary_body,
+            use_suggestion_format=True,
         )
 
-
     def _format_inline_summary(
-        self, response: str, suggestions: List[CodeSuggestion], inline_count: int,
-        total_files: int = 0, included_chunks: List[DiffChunk] = None,
-        incremental: bool = False, current_sha: str = None, command_quote: str = "",
-        file_summaries: Dict[str, str] = None
+        self,
+        response: str,
+        suggestions: List[CodeSuggestion],
+        inline_count: int,
+        total_files: int = 0,
+        included_chunks: List[DiffChunk] = None,
+        incremental: bool = False,
+        current_sha: str = None,
+        command_quote: str = "",
+        file_summaries: Dict[str, str] = None,
     ) -> str:
         """Format a short summary when inline comments were posted."""
         data = self.parse_yaml_response(response) or {}
         summary = data.get("summary", "").strip()
-        
+
         # Merge file summaries from agent response with pre-generated ones
         merged_summaries = file_summaries or {}
         for fs in data.get("file_summaries", []):
@@ -343,12 +397,20 @@ suggestions:
         else:
             lines.append("Code review completed.\n")
 
-        files_reviewed = total_files if total_files > 0 else len(included_chunks) if included_chunks else 0
+        files_reviewed = (
+            total_files
+            if total_files > 0
+            else len(included_chunks)
+            if included_chunks
+            else 0
+        )
         lines.append("**Reviewed changes**")
-        
+
         # Add incremental review indicator
         review_type = "incremental review" if incremental else "full review"
-        lines.append(f"Kimi performed {review_type} on {files_reviewed} changed files and generated {inline_count} comments.\n")
+        lines.append(
+            f"Kimi performed {review_type} on {files_reviewed} changed files and generated {inline_count} comments.\n"
+        )
 
         if included_chunks:
             lines.append("<details>")
@@ -364,34 +426,40 @@ suggestions:
                         "added": "New file added",
                         "deleted": "File removed",
                         "modified": "Modified",
-                        "renamed": "File renamed"
+                        "renamed": "File renamed",
                     }.get(chunk.change_type, "Modified")
-                    
+
                     # Add language info if available
                     lang_info = f" ({chunk.language})" if chunk.language else ""
                     desc = f"{change_type_desc}{lang_info}"
-                
+
                 lines.append(f"| `{chunk.filename}` | {desc} |")
             lines.append("\n</details>\n")
 
         if suggestions:
             lines.append("**Issues found:**")
-            
+
             # Show first 5 issues
             for s in suggestions[:5]:
                 icon = SEVERITY_ICONS.get(s.severity.value, "⚪")
                 file_name = s.relevant_file or "unknown"
-                issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                issue_summary = (
+                    (s.one_sentence_summary or "").replace("\n", " ").strip()
+                )
                 lines.append(f"- {icon} `{file_name}`: {issue_summary}")
-            
+
             # Show remaining issues in expandable section
             if len(suggestions) > 5:
                 lines.append("<details>")
-                lines.append(f"<summary>... and {len(suggestions) - 5} more</summary>\n")
+                lines.append(
+                    f"<summary>... and {len(suggestions) - 5} more</summary>\n"
+                )
                 for s in suggestions[5:]:
                     icon = SEVERITY_ICONS.get(s.severity.value, "⚪")
                     file_name = s.relevant_file or "unknown"
-                    issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                    issue_summary = (
+                        (s.one_sentence_summary or "").replace("\n", " ").strip()
+                    )
                     lines.append(f"- {icon} `{file_name}`: {issue_summary}")
                 lines.append("\n</details>")
             lines.append("")
@@ -403,7 +471,7 @@ suggestions:
 
     def _build_system_prompt(self, skill) -> str:
         """Build system prompt from skill and context.
-        
+
         Note: Agent SDK will automatically call skill scripts when needed,
         so we don't need to run them manually and include output in prompt.
         """
@@ -416,11 +484,15 @@ suggestions:
 - Cache key collision detection
 - All items in the Strict Mode Checklist""",
             "normal": "Review Level: Normal - Focus on functional issues and common bugs",
-            "gentle": "Review Level: Gentle - Only flag critical issues that would break functionality"
+            "gentle": "Review Level: Gentle - Only flag critical issues that would break functionality",
         }
-        parts.append(f"\n## {level_text.get(self.config.review_level, level_text['normal'])}")
+        parts.append(
+            f"\n## {level_text.get(self.config.review_level, level_text['normal'])}"
+        )
         if self.config.review.extra_instructions:
-            parts.append(f"\n## Extra Instructions\n{self.config.review.extra_instructions}")
+            parts.append(
+                f"\n## Extra Instructions\n{self.config.review.extra_instructions}"
+            )
         return "\n".join(parts)
 
     def _parse_suggestions(self, response: str) -> List[CodeSuggestion]:
@@ -430,7 +502,7 @@ suggestions:
             if not data:
                 logger.warning("YAML parsing returned None or empty data")
                 return []
-                
+
             suggestions_data = data.get("suggestions", [])
             if not suggestions_data:
                 logger.info("No suggestions in YAML response")
@@ -439,8 +511,12 @@ suggestions:
             suggestions = []
             for s in suggestions_data:
                 severity_str = s.get("severity", "medium").lower()
-                severity = SeverityLevel(severity_str) if severity_str in ["critical", "high", "medium", "low"] else SeverityLevel.MEDIUM
-                
+                severity = (
+                    SeverityLevel(severity_str)
+                    if severity_str in ["critical", "high", "medium", "low"]
+                    else SeverityLevel.MEDIUM
+                )
+
                 suggestion = CodeSuggestion(
                     id=str(uuid.uuid4())[:8],
                     relevant_file=s.get("relevant_file", ""),
@@ -452,16 +528,20 @@ suggestions:
                     relevant_lines_start=s.get("relevant_lines_start", 0),
                     relevant_lines_end=s.get("relevant_lines_end", 0),
                     label=s.get("label", "bug"),
-                    severity=severity
+                    severity=severity,
                 )
-                
+
                 # Validate suggestion quality
                 if self._validate_suggestion_quality(suggestion):
                     suggestions.append(suggestion)
                 else:
-                    logger.warning(f"Filtered low-quality suggestion: {suggestion.one_sentence_summary[:50]}")
-            
-            logger.info(f"Parsed {len(suggestions)} high-quality suggestions from response")
+                    logger.warning(
+                        f"Filtered low-quality suggestion: {suggestion.one_sentence_summary[:50]}"
+                    )
+
+            logger.info(
+                f"Parsed {len(suggestions)} high-quality suggestions from response"
+            )
             return suggestions
         except Exception as e:
             logger.error(f"Failed to parse suggestions: {e}")
@@ -469,56 +549,78 @@ suggestions:
 
     def _validate_suggestion_quality(self, s: CodeSuggestion) -> bool:
         """Validate suggestion quality to filter out vague or uncertain suggestions.
-        
+
         Returns:
             True if suggestion meets quality standards, False otherwise
         """
         # Must have specific line numbers
         if not s.relevant_lines_start or s.relevant_lines_start <= 0:
-            logger.debug(f"Rejected: missing line numbers - {s.one_sentence_summary[:50]}")
+            logger.debug(
+                f"Rejected: missing line numbers - {s.one_sentence_summary[:50]}"
+            )
             return False
-        
+
         # Must have both existing and improved code
         if not s.existing_code or not s.improved_code:
-            logger.debug(f"Rejected: missing code examples - {s.one_sentence_summary[:50]}")
+            logger.debug(
+                f"Rejected: missing code examples - {s.one_sentence_summary[:50]}"
+            )
             return False
-        
+
         # Code must be different
         if s.existing_code.strip() == s.improved_code.strip():
             logger.debug(f"Rejected: identical code - {s.one_sentence_summary[:50]}")
             return False
-        
+
         # Must have meaningful content
         if not s.suggestion_content or len(s.suggestion_content.strip()) < 20:
             logger.debug(f"Rejected: too short content - {s.one_sentence_summary[:50]}")
             return False
-        
+
         # Check for uncertain language
         uncertain_words = [
-            "might", "probably", "likely", "appears to", "seems to",
-            "could be", "may be", "may cause", "possibly", "perhaps", "maybe"
+            "might",
+            "probably",
+            "likely",
+            "appears to",
+            "seems to",
+            "could be",
+            "may be",
+            "may cause",
+            "possibly",
+            "perhaps",
+            "maybe",
         ]
         content_lower = s.suggestion_content.lower()
         summary_lower = s.one_sentence_summary.lower()
-        
+
         for word in uncertain_words:
             if word in content_lower or word in summary_lower:
-                logger.debug(f"Rejected: uncertain language '{word}' - {s.one_sentence_summary[:50]}")
+                logger.debug(
+                    f"Rejected: uncertain language '{word}' - {s.one_sentence_summary[:50]}"
+                )
                 return False
-        
+
         # Check for vague descriptions
         vague_phrases = [
-            "improve", "consider", "should", "better to", "it would be",
-            "you might want", "try to", "think about"
+            "improve",
+            "consider",
+            "should",
+            "better to",
+            "it would be",
+            "you might want",
+            "try to",
+            "think about",
         ]
-        
+
         for phrase in vague_phrases:
             if phrase in content_lower[:50]:  # Check first 50 chars
-                logger.debug(f"Rejected: vague opening '{phrase}' - {s.one_sentence_summary[:50]}")
+                logger.debug(
+                    f"Rejected: vague opening '{phrase}' - {s.one_sentence_summary[:50]}"
+                )
                 return False
-        
-        return True
 
+        return True
 
     def _format_fallback(self, response: str, current_sha: str = None) -> str:
         """Fallback formatting when no suggestions found."""
@@ -526,49 +628,51 @@ suggestions:
         if data:
             summary = data.get("summary", "").strip()
             score = data.get("score", "N/A")
-            
+
             lines = ["## 🌗 Kimi Code Review\n"]
             lines.append("### ✅ No issues found\n")
             if summary:
                 lines.append(f"**Summary**: {summary}\n")
             lines.append(f"**Code Score**: {score}/100\n")
             lines.append(self.format_footer())
-            
+
             if current_sha:
                 lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
             return "\n".join(lines)
-        
+
         result = f"## 🌗 Kimi Code Review\n\n{response}\n\n{self.format_footer()}"
         if current_sha:
             result += f"\n<!-- kimi-review:sha={current_sha[:12]} -->"
         return result
 
-    def _generate_file_summaries(self, chunks: List[DiffChunk], diff: str) -> Dict[str, str]:
+    def _generate_file_summaries(
+        self, chunks: List[DiffChunk], diff: str
+    ) -> Dict[str, str]:
         """Generate concise descriptions for each changed file using Agent.
-        
+
         This runs a quick analysis before the main review to provide better
         file descriptions in the summary table.
         """
         if not chunks:
             return {}
-        
+
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
             from kaos.path import KaosPath
         except ImportError:
             logger.warning("kimi-agent-sdk not available for file summaries")
             return {}
-        
+
         api_key = self.setup_agent_env()
         if not api_key:
             return {}
-        
+
         # Build a concise prompt with just file paths and their diffs
         file_list = []
         for chunk in chunks[:10]:  # Limit to first 10 files to save tokens
             change_type = chunk.change_type or "modified"
             file_list.append(f"- `{chunk.filename}` ({change_type})")
-        
+
         prompt = f"""Analyze these changed files and provide a ONE-sentence description for each.
 
 Files changed:
@@ -594,12 +698,12 @@ Requirements:
 - Focus on the main change, not every detail
 - Use technical terms appropriately
 """
-        
+
         try:
             text_parts = []
             with tempfile.TemporaryDirectory() as work_dir:
                 work_dir_kaos = KaosPath(work_dir)
-                
+
                 async def run_summary():
                     async with await Session.create(
                         work_dir=work_dir_kaos,
@@ -612,25 +716,25 @@ Requirements:
                                 text_parts.append(msg.text)
                             elif isinstance(msg, ApprovalRequest):
                                 msg.resolve("approve")
-                
+
                 asyncio.run(run_summary())
                 response = "".join(text_parts)
-                
+
                 # Parse the YAML response
                 data = self.parse_yaml_response(response)
                 if not data:
                     return {}
-                
+
                 summaries = {}
                 for fs in data.get("file_summaries", []):
                     f = fs.get("file", "")
                     desc = fs.get("description", "")
                     if f and desc:
                         summaries[f] = desc
-                
+
                 logger.info(f"Generated summaries for {len(summaries)} files")
                 return summaries
-                
+
         except Exception as e:
             logger.warning(f"Failed to generate file summaries: {e}")
             return {}

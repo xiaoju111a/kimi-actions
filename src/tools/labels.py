@@ -12,8 +12,17 @@ from tools.base import BaseTool, DIFF_LIMIT_ASK
 logger = logging.getLogger(__name__)
 
 DEFAULT_LABELS = [
-    "bug", "feature", "enhancement", "documentation", "refactor",
-    "test", "chore", "breaking-change", "dependencies", "security", "performance",
+    "bug",
+    "feature",
+    "enhancement",
+    "documentation",
+    "refactor",
+    "test",
+    "chore",
+    "breaking-change",
+    "dependencies",
+    "security",
+    "performance",
 ]
 
 
@@ -39,13 +48,15 @@ class Labels(BaseTool):
         skill = self.get_skill()
         skill_instructions = skill.instructions if skill else self._default_prompt()
 
-        response = asyncio.run(self._run_agent_labels(
-            skill_instructions=skill_instructions,
-            pr_title=pr.title,
-            pr_branch=pr.head.ref,
-            repo_labels=repo_labels,
-            diff=diff
-        ))
+        response = asyncio.run(
+            self._run_agent_labels(
+                skill_instructions=skill_instructions,
+                pr_title=pr.title,
+                pr_branch=pr.head.ref,
+                repo_labels=repo_labels,
+                diff=diff,
+            )
+        )
 
         labels, reason = self._parse_response(response, repo_labels)
 
@@ -62,8 +73,12 @@ class Labels(BaseTool):
         return self._format_result(labels, reason, applied)
 
     async def _run_agent_labels(
-        self, skill_instructions: str, pr_title: str, pr_branch: str,
-        repo_labels: List[str], diff: str
+        self,
+        skill_instructions: str,
+        pr_title: str,
+        pr_branch: str,
+        repo_labels: List[str],
+        diff: str,
     ) -> str:
         """Run agent to suggest labels (no git clone needed)."""
         try:
@@ -84,7 +99,7 @@ Title: {pr_title}
 Branch: {pr_branch}
 
 ## Available Labels
-{', '.join(repo_labels)}
+{", ".join(repo_labels)}
 
 ## Code Changes
 ```diff
@@ -103,11 +118,11 @@ Rules:
         try:
             # Use auto-detected skills_dir from BaseTool
             skills_path = self.get_skills_dir()
-            
+
             # Convert to KaosPath for Agent SDK
             work_dir_kaos = KaosPath("/tmp")
             skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
-            
+
             async with await Session.create(
                 work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
@@ -120,7 +135,7 @@ Rules:
                         text_parts.append(msg.text)
                     elif isinstance(msg, ApprovalRequest):
                         msg.resolve("approve")
-            
+
             if skills_path:
                 logger.info(f"Labels used skills from: {skills_path}")
             return "".join(text_parts)
@@ -148,12 +163,16 @@ Be conservative. Only suggest labels you're confident about."""
     def _parse_response(self, response: str, valid_labels: List[str]) -> tuple:
         """Parse JSON response and validate labels."""
         try:
-            json_match = re.search(r'\{[^}]+\}', response, re.DOTALL)
+            json_match = re.search(r"\{[^}]+\}", response, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
                 labels = data.get("labels", [])
                 reason = data.get("reason", "")
-                valid = [label for label in labels if label.lower() in [v.lower() for v in valid_labels]]
+                valid = [
+                    label
+                    for label in labels
+                    if label.lower() in [v.lower() for v in valid_labels]
+                ]
                 return valid[:3], reason
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to parse labels response: {e}")
@@ -163,9 +182,13 @@ Be conservative. Only suggest labels you're confident about."""
         """Format the result message."""
         lines = ["## 🏷️ Kimi Labels\n"]
         if applied:
-            lines.append(f"✅ Applied labels: {', '.join(f'`{label}`' for label in labels)}\n")
+            lines.append(
+                f"✅ Applied labels: {', '.join(f'`{label}`' for label in labels)}\n"
+            )
         else:
-            lines.append(f"⚠️ Suggested labels: {', '.join(f'`{label}`' for label in labels)}\n")
+            lines.append(
+                f"⚠️ Suggested labels: {', '.join(f'`{label}`' for label in labels)}\n"
+            )
             lines.append("(Failed to apply automatically)\n")
         if reason:
             lines.append(f"**Reason**: {reason}\n")

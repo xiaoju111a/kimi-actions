@@ -59,9 +59,11 @@ class GitHubClient:
             logger.error(f"Failed to post comment to PR #{pr_number}: {e}")
             raise
 
-    def post_review(self, repo_name: str, pr_number: int, body: str, event: str = "COMMENT") -> None:
+    def post_review(
+        self, repo_name: str, pr_number: int, body: str, event: str = "COMMENT"
+    ) -> None:
         """Post a review on the PR.
-        
+
         Args:
             event: APPROVE, REQUEST_CHANGES, or COMMENT
         """
@@ -73,7 +75,9 @@ class GitHubClient:
             logger.error(f"Failed to post review to PR #{pr_number}: {e}")
             raise
 
-    def add_reaction(self, repo_name: str, pr_number: int, comment_id: int, reaction: str = "eyes") -> None:
+    def add_reaction(
+        self, repo_name: str, pr_number: int, comment_id: int, reaction: str = "eyes"
+    ) -> None:
         """Add reaction to a comment."""
         try:
             repo = self.client.get_repo(repo_name)
@@ -82,7 +86,9 @@ class GitHubClient:
         except GithubException as e:
             logger.warning(f"Failed to add reaction: {e}")
 
-    def reply_to_review_comment(self, repo_name: str, pr_number: int, comment_id: int, body: str) -> None:
+    def reply_to_review_comment(
+        self, repo_name: str, pr_number: int, comment_id: int, body: str
+    ) -> None:
         """Reply to a review comment (inline comment)."""
         try:
             pr = self.get_pr(repo_name, pr_number)
@@ -92,13 +98,15 @@ class GitHubClient:
             logger.error(f"Failed to reply to review comment: {e}")
             raise
 
-    def get_review_comment_context(self, repo_name: str, pr_number: int, comment_id: int) -> Optional[Dict[str, Any]]:
+    def get_review_comment_context(
+        self, repo_name: str, pr_number: int, comment_id: int
+    ) -> Optional[Dict[str, Any]]:
         """Get context information for a review comment or a reply to review comment.
-        
+
         This handles both:
         1. Direct review comments (pull_request_review_comment event)
         2. Replies to review comments (issue_comment event)
-        
+
         Returns dict with:
         - path: File path
         - line: Line number
@@ -109,7 +117,7 @@ class GitHubClient:
         try:
             repo = self.client.get_repo(repo_name)
             pr = self.get_pr(repo_name, pr_number)
-            
+
             # First, check if this comment_id is a review comment
             for review_comment in pr.get_review_comments():
                 if review_comment.id == comment_id:
@@ -118,9 +126,9 @@ class GitHubClient:
                         "line": review_comment.line or review_comment.original_line,
                         "diff_hunk": review_comment.diff_hunk,
                         "body": review_comment.body,
-                        "in_reply_to_id": review_comment.in_reply_to_id
+                        "in_reply_to_id": review_comment.in_reply_to_id,
                     }
-            
+
             # If not found, this might be an issue comment that's a reply to a review comment
             # GitHub's API doesn't directly expose the parent review comment for issue comments
             # We need to check if this is a conversation reply by looking at the comment HTML URL
@@ -130,37 +138,42 @@ class GitHubClient:
                 if issue_comment.id == comment_id:
                     target_comment = issue_comment
                     break
-            
+
             if not target_comment:
                 logger.warning(f"Could not find comment {comment_id}")
                 return None
-            
+
             # Check if the comment URL indicates it's a review comment thread
             # Review comment URLs look like: .../pull/123#discussion_r456789
             # Issue comment URLs look like: .../pull/123#issuecomment-456789
             html_url = target_comment.html_url
-            
+
             if "#discussion_r" in html_url:
                 # This is a reply in a review comment thread
                 # Extract the discussion ID
                 discussion_id = html_url.split("#discussion_r")[-1]
-                
+
                 # Find the parent review comment by matching the discussion thread
                 # The parent review comment will have the same discussion ID in its URL
                 for review_comment in pr.get_review_comments():
-                    if f"discussion_r{discussion_id}" in review_comment.html_url or str(review_comment.id) == discussion_id:
+                    if (
+                        f"discussion_r{discussion_id}" in review_comment.html_url
+                        or str(review_comment.id) == discussion_id
+                    ):
                         return {
                             "path": review_comment.path,
                             "line": review_comment.line or review_comment.original_line,
                             "diff_hunk": review_comment.diff_hunk,
                             "body": target_comment.body,
                             "in_reply_to_id": review_comment.id,
-                            "is_conversation_reply": True
+                            "is_conversation_reply": True,
                         }
-            
-            logger.warning(f"Comment {comment_id} is not a review comment or reply to review comment")
+
+            logger.warning(
+                f"Comment {comment_id} is not a review comment or reply to review comment"
+            )
             return None
-            
+
         except GithubException as e:
             logger.error(f"Failed to get review comment context: {e}")
             return None
@@ -173,7 +186,7 @@ class GitHubClient:
         pr_number: int,
         comments: List[Dict[str, Any]],
         body: str = "",
-        event: str = "COMMENT"
+        event: str = "COMMENT",
     ) -> None:
         """Submit a review with inline comments on specific lines.
 
@@ -204,7 +217,7 @@ class GitHubClient:
                         "path": path,
                         "line": line,
                         "body": c.get("body", ""),
-                        "side": side
+                        "side": side,
                     }
                     # Add start_line for multi-line suggestions
                     if start_line and start_line != line:
@@ -216,10 +229,7 @@ class GitHubClient:
 
             if valid_comments:
                 pr.create_review(
-                    commit=commit,
-                    body=body,
-                    event=event,
-                    comments=valid_comments
+                    commit=commit, body=body, event=event, comments=valid_comments
                 )
                 logger.info(f"Posted review with {len(valid_comments)} inline comments")
             elif body:
@@ -244,17 +254,19 @@ class GitHubClient:
             lines: Set[int] = set()
             current_line: int = 0
 
-            for patch_line in file.patch.split('\n'):
+            for patch_line in file.patch.split("\n"):
                 # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
-                hunk_match = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@', patch_line)
+                hunk_match = re.match(
+                    r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", patch_line
+                )
                 if hunk_match:
                     current_line = int(hunk_match.group(1))
                     continue
 
-                if patch_line.startswith('-'):
+                if patch_line.startswith("-"):
                     # Deleted line, don't increment
                     continue
-                elif patch_line.startswith('+') or not patch_line.startswith('\\'):
+                elif patch_line.startswith("+") or not patch_line.startswith("\\"):
                     # Added or context line
                     lines.add(current_line)
                     current_line += 1
@@ -299,7 +311,9 @@ class GitHubClient:
 
     # === Incremental Review ===
 
-    def get_commits_since(self, repo_name: str, pr_number: int, since_sha: str) -> List[Commit]:
+    def get_commits_since(
+        self, repo_name: str, pr_number: int, since_sha: str
+    ) -> List[Commit]:
         """Get commits after a specific SHA."""
         pr = self.get_pr(repo_name, pr_number)
         commits = list(pr.get_commits())
@@ -330,7 +344,9 @@ class GitHubClient:
 
         return "\n\n".join(diff_parts)
 
-    def get_last_bot_comment(self, repo_name: str, pr_number: int, bot_marker: str = "<!-- kimi-review -->") -> Optional[Dict[str, Any]]:
+    def get_last_bot_comment(
+        self, repo_name: str, pr_number: int, bot_marker: str = "<!-- kimi-review -->"
+    ) -> Optional[Dict[str, Any]]:
         """Find the last comment from this bot with review marker.
 
         Returns dict with 'sha' and 'comment_id' if found.
@@ -341,12 +357,14 @@ class GitHubClient:
         for comment in reversed(comments):
             if bot_marker in comment.body:
                 # Extract SHA from marker: <!-- kimi-review:sha=abc123 -->
-                sha_match = re.search(r'<!-- kimi-review:sha=([a-f0-9]+) -->', comment.body)
+                sha_match = re.search(
+                    r"<!-- kimi-review:sha=([a-f0-9]+) -->", comment.body
+                )
                 if sha_match:
                     return {
                         "sha": sha_match.group(1),
                         "comment_id": comment.id,
-                        "created_at": comment.created_at
+                        "created_at": comment.created_at,
                     }
         return None
 
@@ -371,7 +389,9 @@ class GitHubClient:
             logger.error(f"Failed to post comment to Issue #{issue_number}: {e}")
             raise
 
-    def add_issue_reaction(self, repo_name: str, issue_number: int, comment_id: int, reaction: str = "eyes") -> None:
+    def add_issue_reaction(
+        self, repo_name: str, issue_number: int, comment_id: int, reaction: str = "eyes"
+    ) -> None:
         """Add reaction to an issue comment."""
         try:
             repo = self.client.get_repo(repo_name)
@@ -380,7 +400,9 @@ class GitHubClient:
         except GithubException as e:
             logger.warning(f"Failed to add reaction to issue comment: {e}")
 
-    def add_issue_labels(self, repo_name: str, issue_number: int, labels: List[str]) -> None:
+    def add_issue_labels(
+        self, repo_name: str, issue_number: int, labels: List[str]
+    ) -> None:
         """Add labels to an issue."""
         try:
             issue = self.get_issue(repo_name, issue_number)
@@ -391,42 +413,34 @@ class GitHubClient:
             raise
 
     def create_pull_request(
-        self,
-        repo_name: str,
-        title: str,
-        body: str,
-        head: str,
-        base: str = "main"
+        self, repo_name: str, title: str, body: str, head: str, base: str = "main"
     ) -> PullRequest:
         """Create a pull request.
-        
+
         Args:
             repo_name: Repository name (owner/repo)
             title: PR title
             body: PR body/description
             head: Source branch name
             base: Target branch name (default: main)
-            
+
         Returns:
             Created PullRequest object
         """
         try:
             repo = self.client.get_repo(repo_name)
-            pr = repo.create_pull(
-                title=title,
-                body=body,
-                head=head,
-                base=base
-            )
+            pr = repo.create_pull(title=title, body=body, head=head, base=base)
             logger.info(f"Created PR #{pr.number}: {title}")
             return pr
         except GithubException as e:
             logger.error(f"Failed to create PR: {e}")
             raise
 
-    def get_pr_review_comments(self, repo_name: str, pr_number: int) -> List[Dict[str, Any]]:
+    def get_pr_review_comments(
+        self, repo_name: str, pr_number: int
+    ) -> List[Dict[str, Any]]:
         """Get all review comments (inline comments) on a PR.
-        
+
         Returns:
             List of dicts with: body, path, line, user, created_at
         """
@@ -434,21 +448,25 @@ class GitHubClient:
             pr = self.get_pr(repo_name, pr_number)
             comments = []
             for comment in pr.get_review_comments():
-                comments.append({
-                    "body": comment.body,
-                    "path": comment.path,
-                    "line": comment.line or comment.original_line,
-                    "user": comment.user.login,
-                    "created_at": comment.created_at.isoformat()
-                })
+                comments.append(
+                    {
+                        "body": comment.body,
+                        "path": comment.path,
+                        "line": comment.line or comment.original_line,
+                        "user": comment.user.login,
+                        "created_at": comment.created_at.isoformat(),
+                    }
+                )
             return comments
         except GithubException as e:
             logger.error(f"Failed to get review comments: {e}")
             return []
 
-    def get_pr_issue_comments(self, repo_name: str, pr_number: int) -> List[Dict[str, Any]]:
+    def get_pr_issue_comments(
+        self, repo_name: str, pr_number: int
+    ) -> List[Dict[str, Any]]:
         """Get all issue comments (general comments) on a PR.
-        
+
         Returns:
             List of dicts with: body, user, created_at
         """
@@ -456,11 +474,13 @@ class GitHubClient:
             pr = self.get_pr(repo_name, pr_number)
             comments = []
             for comment in pr.get_issue_comments():
-                comments.append({
-                    "body": comment.body,
-                    "user": comment.user.login,
-                    "created_at": comment.created_at.isoformat()
-                })
+                comments.append(
+                    {
+                        "body": comment.body,
+                        "user": comment.user.login,
+                        "created_at": comment.created_at.isoformat(),
+                    }
+                )
             return comments
         except GithubException as e:
             logger.error(f"Failed to get issue comments: {e}")
@@ -468,7 +488,7 @@ class GitHubClient:
 
     def get_linked_issue_number(self, repo_name: str, pr_number: int) -> Optional[int]:
         """Get the linked issue number from PR body (Closes #N pattern).
-        
+
         Returns:
             Issue number if found, None otherwise
         """
@@ -476,7 +496,9 @@ class GitHubClient:
             pr = self.get_pr(repo_name, pr_number)
             body = pr.body or ""
             # Match patterns like: Closes #123, Fixes #123, Resolves #123
-            match = re.search(r'(?:closes|fixes|resolves)\s+#(\d+)', body, re.IGNORECASE)
+            match = re.search(
+                r"(?:closes|fixes|resolves)\s+#(\d+)", body, re.IGNORECASE
+            )
             if match:
                 return int(match.group(1))
             return None

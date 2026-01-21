@@ -50,11 +50,7 @@ class Triage(BaseTool):
         return "triage"
 
     def run(
-        self,
-        repo_name: str,
-        issue_number: int,
-        apply_labels: bool = True,
-        **kwargs
+        self, repo_name: str, issue_number: int, apply_labels: bool = True, **kwargs
     ) -> str:
         """Analyze issue and suggest classification.
 
@@ -78,7 +74,9 @@ class Triage(BaseTool):
 
         # Load skill for prompt
         skill = self.get_skill()
-        skill_instructions = skill.instructions if skill else self._default_instructions()
+        skill_instructions = (
+            skill.instructions if skill else self._default_instructions()
+        )
 
         logger.info(f"Triaging issue #{issue_number}: {issue.title}")
 
@@ -86,17 +84,19 @@ class Triage(BaseTool):
         with tempfile.TemporaryDirectory() as work_dir:
             if not self.clone_repo(repo_name, work_dir):
                 return "❌ Failed to clone repository"
-            
+
             try:
                 # Run agent triage
-                result = asyncio.run(self._run_agent_triage(
-                    work_dir=work_dir,
-                    issue_title=issue.title,
-                    issue_body=issue.body or "",
-                    issue_author=issue.user.login,
-                    repo_labels=repo_labels,
-                    skill_instructions=skill_instructions
-                ))
+                result = asyncio.run(
+                    self._run_agent_triage(
+                        work_dir=work_dir,
+                        issue_title=issue.title,
+                        issue_body=issue.body or "",
+                        issue_author=issue.user.login,
+                        repo_labels=repo_labels,
+                        skill_instructions=skill_instructions,
+                    )
+                )
 
                 # Parse result
                 triage_result = self._parse_response(result, repo_labels)
@@ -114,7 +114,9 @@ class Triage(BaseTool):
                 applied = False
                 if apply_labels and triage_result.get("labels"):
                     try:
-                        self.github.add_issue_labels(repo_name, issue_number, triage_result["labels"])
+                        self.github.add_issue_labels(
+                            repo_name, issue_number, triage_result["labels"]
+                        )
                         applied = True
                     except Exception as e:
                         logger.error(f"Failed to apply labels: {e}")
@@ -132,7 +134,7 @@ class Triage(BaseTool):
         issue_body: str,
         issue_author: str,
         repo_labels: List[str],
-        skill_instructions: str
+        skill_instructions: str,
     ) -> str:
         """Run agent to analyze the issue."""
         try:
@@ -163,7 +165,7 @@ class Triage(BaseTool):
 {issue_body[:4000]}
 
 ## Available Labels
-{', '.join(repo_labels)}
+{", ".join(repo_labels)}
 
 ## Instructions
 
@@ -188,11 +190,11 @@ IMPORTANT: You MUST output the JSON block above. Do not skip it. Search for rela
         try:
             # Use auto-detected skills_dir from BaseTool
             skills_path = self.get_skills_dir()
-            
+
             # Convert to KaosPath for Agent SDK
             work_dir_kaos = KaosPath(work_dir) if work_dir else KaosPath.cwd()
             skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
-            
+
             async with await Session.create(
                 work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
@@ -238,47 +240,55 @@ Be conservative with labels. Only suggest labels you're confident about."""
         try:
             # Extract JSON from response
             # Try markdown code block first
-            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
+            json_match = re.search(r"```json\s*(\{.*?\})\s*```", response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
                 logger.debug("Found JSON in markdown code block")
             else:
                 # Try to find complete JSON object (handles nested arrays/objects)
                 # Find the first { and match to the corresponding }
-                start_idx = response.find('{')
+                start_idx = response.find("{")
                 if start_idx != -1:
                     depth = 0
                     end_idx = start_idx
                     for i, char in enumerate(response[start_idx:], start_idx):
-                        if char == '{':
+                        if char == "{":
                             depth += 1
-                        elif char == '}':
+                        elif char == "}":
                             depth -= 1
                             if depth == 0:
                                 end_idx = i
                                 break
-                    json_str = response[start_idx:end_idx + 1]
+                    json_str = response[start_idx : end_idx + 1]
                     logger.debug(f"Found JSON object: {json_str[:100]}...")
                 else:
                     logger.warning("No JSON found in response")
                     return None
 
             # Clean up tokenization artifacts (spaces around values)
-            json_str = re.sub(r'"\s+', '"', json_str)  # Remove space after opening quote
-            json_str = re.sub(r'\s+"', '"', json_str)  # Remove space before closing quote
+            json_str = re.sub(
+                r'"\s+', '"', json_str
+            )  # Remove space after opening quote
+            json_str = re.sub(
+                r'\s+"', '"', json_str
+            )  # Remove space before closing quote
 
             data = json.loads(json_str)
-            
+
             # Strip whitespace from string values
-            for key in ['type', 'priority', 'confidence', 'summary', 'reason']:
+            for key in ["type", "priority", "confidence", "summary", "reason"]:
                 if key in data and isinstance(data[key], str):
                     data[key] = data[key].strip()
-            
+
             # Clean related_files
-            if 'related_files' in data and isinstance(data['related_files'], list):
-                data['related_files'] = [f for f in data['related_files'] if isinstance(f, str)]
-            
-            logger.info(f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}, files={len(data.get('related_files', []))}")
+            if "related_files" in data and isinstance(data["related_files"], list):
+                data["related_files"] = [
+                    f for f in data["related_files"] if isinstance(f, str)
+                ]
+
+            logger.info(
+                f"Parsed triage result: type={data.get('type')}, priority={data.get('priority')}, files={len(data.get('related_files', []))}"
+            )
 
             # Validate and filter labels
             suggested_labels = data.get("labels", [])
@@ -314,15 +324,10 @@ Be conservative with labels. Only suggest labels you're confident about."""
             "enhancement": "💡",
             "question": "❓",
             "documentation": "📚",
-            "other": "📋"
+            "other": "📋",
         }
 
-        priority_emoji = {
-            "critical": "🔴",
-            "high": "🟠",
-            "medium": "🟡",
-            "low": "🟢"
-        }
+        priority_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}
 
         # Classification table
         lines.append("### Classification\n")
@@ -353,7 +358,9 @@ Be conservative with labels. Only suggest labels you're confident about."""
         related_files = result.get("related_files", [])
         if related_files:
             lines.append("<details>")
-            lines.append(f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>\n")
+            lines.append(
+                f"<summary><strong>📁 Related Files</strong> ({len(related_files[:8])} files)</summary>\n"
+            )
             for f in related_files[:8]:
                 lines.append(f"- `{f}`")
             lines.append("\n</details>\n")
@@ -370,7 +377,9 @@ Be conservative with labels. Only suggest labels you're confident about."""
             recs.append("- [ ] Verify the bug can be reproduced")
             recs.append("- [ ] Check for related issues")
             if priority in ["critical", "high"]:
-                recs.append("- [ ] **Prioritize** - This appears to be a high-impact bug")
+                recs.append(
+                    "- [ ] **Prioritize** - This appears to be a high-impact bug"
+                )
         elif issue_type in ["feature", "enhancement"]:
             recs.append("- [ ] Evaluate feature fit with project roadmap")
             recs.append("- [ ] Gather community feedback")

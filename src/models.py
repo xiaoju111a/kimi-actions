@@ -6,6 +6,7 @@ from enum import Enum
 
 class SeverityLevel(Enum):
     """Severity levels for code suggestions."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -15,6 +16,7 @@ class SeverityLevel(Enum):
 @dataclass
 class CodeSuggestion:
     """A single code suggestion."""
+
     id: str
     relevant_file: str
     language: str
@@ -32,6 +34,7 @@ class CodeSuggestion:
 @dataclass
 class ReviewOptions:
     """Review options configuration."""
+
     bug: bool = True
     performance: bool = True
     security: bool = True
@@ -40,5 +43,6 @@ class ReviewOptions:
 @dataclass
 class SuggestionControl:
     """Suggestion control configuration."""
+
     max_suggestions: int = 20
     severity_level_filter: SeverityLevel = SeverityLevel.MEDIUM

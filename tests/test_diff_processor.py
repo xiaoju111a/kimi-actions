@@ -5,9 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from diff_processor import (
-    is_binary_file, should_exclude, filter_files
-)
+from diff_processor import is_binary_file, should_exclude, filter_files
 
 
 class TestIsBinaryFile:
@@ -91,7 +89,7 @@ class TestFilterFiles:
             "package-lock.json",
             "image.png",
             "app.tsx",
-            "bundle.min.js"
+            "bundle.min.js",
         ]
         filtered = filter_files(files)
 

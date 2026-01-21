@@ -6,11 +6,12 @@ import sys
 import os
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 class MockPR:
     """Mock GitHub PR object."""
+
     def __init__(self):
         self.title = "feat: add user authentication"
         self.body = "This PR adds JWT authentication"
@@ -32,6 +33,7 @@ class MockPR:
 
 class MockGitHubClient:
     """Mock GitHub client."""
+
     def __init__(self):
         self.client = Mock()
         self.posted_comments = []
@@ -65,33 +67,29 @@ new file mode 100644
     def post_comment(self, repo_name: str, pr_number: int, body: str):
         self.posted_comments.append(body)
 
-    def add_reaction(self, repo_name: str, pr_number: int, comment_id: int, reaction: str):
+    def add_reaction(
+        self, repo_name: str, pr_number: int, comment_id: int, reaction: str
+    ):
         self.reactions.append(reaction)
 
 
 @pytest.fixture
 def mock_action_config():
     """Create mock action config."""
-    with patch('tools.base.get_action_config') as mock:
+    with patch("tools.base.get_action_config") as mock:
         config = Mock()
         config.model = "kimi-k2-turbo-preview"
         config.review_level = "normal"
         config.max_files = 10
         config.exclude_patterns = ["*.lock"]
-        config.review = Mock(
-            num_max_findings=5,
-            extra_instructions=""
-        )
+        config.review = Mock(num_max_findings=5, extra_instructions="")
         config.describe = Mock(
             generate_title=True,
             generate_labels=True,
             enable_walkthrough=True,
-            extra_instructions=""
+            extra_instructions="",
         )
-        config.improve = Mock(
-            num_suggestions=5,
-            extra_instructions=""
-        )
+        config.improve = Mock(num_suggestions=5, extra_instructions="")
         mock.return_value = config
         yield config
 
@@ -111,10 +109,9 @@ class TestReviewerIntegration:
         reviewer.load_context = Mock()
         reviewer.repo_config = None
         reviewer.skill_manager = Mock()
-        reviewer.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Review the code",
-            scripts={}
-        ))
+        reviewer.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Review the code", scripts={})
+        )
 
         # Mock subprocess and asyncio.run to skip git clone and agent calls
         mock_agent_response = """```yaml
@@ -132,8 +129,10 @@ suggestions:
     label: security
     severity: critical
 ```"""
-        with patch('subprocess.run') as mock_run, \
-             patch('asyncio.run', return_value=mock_agent_response):
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("asyncio.run", return_value=mock_agent_response),
+        ):
             mock_run.return_value = Mock(returncode=0)
             result = reviewer.run("owner/repo", 42)
 
@@ -150,10 +149,9 @@ suggestions:
         reviewer = Reviewer(github)
         reviewer.load_context = Mock()
         reviewer.skill_manager = Mock()
-        reviewer.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Review the code",
-            scripts={}
-        ))
+        reviewer.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Review the code", scripts={})
+        )
 
         result = reviewer.run("owner/repo", 42)
 
@@ -173,9 +171,9 @@ class TestDescribeIntegration:
         describe.load_context = Mock()
         describe.repo_config = None
         describe.skill_manager = Mock()
-        describe.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Generate PR description"
-        ))
+        describe.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Generate PR description")
+        )
 
         # Mock asyncio.run to skip agent calls
         mock_agent_response = """```yaml
@@ -190,7 +188,7 @@ files:
     change_type: added
     summary: JWT authentication module
 ```"""
-        with patch('asyncio.run', return_value=mock_agent_response):
+        with patch("asyncio.run", return_value=mock_agent_response):
             title, body = describe.run("owner/repo", 42, update_pr=False)
 
         assert "auth" in title.lower() or "jwt" in title.lower()
@@ -210,9 +208,9 @@ class TestImproveIntegration:
         improve.load_context = Mock()
         improve.repo_config = None
         improve.skill_manager = Mock()
-        improve.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Provide improvements"
-        ))
+        improve.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Provide improvements")
+        )
 
         # Mock subprocess and asyncio.run to skip git clone and agent calls
         mock_agent_response = """```yaml
@@ -225,8 +223,10 @@ suggestions:
     language: python
     severity: high
 ```"""
-        with patch('subprocess.run') as mock_run, \
-             patch('asyncio.run', return_value=mock_agent_response):
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("asyncio.run", return_value=mock_agent_response),
+        ):
             mock_run.return_value = Mock(returncode=0)
             result = improve.run("owner/repo", 42)
 
@@ -247,16 +247,20 @@ class TestAskIntegration:
         ask.load_context = Mock()
         ask.repo_config = None
         ask.skill_manager = Mock()
-        ask.skill_manager.get_skill = Mock(return_value=Mock(
-            instructions="Answer questions"
-        ))
+        ask.skill_manager.get_skill = Mock(
+            return_value=Mock(instructions="Answer questions")
+        )
 
         # Mock subprocess and asyncio.run to skip git clone and agent calls
         mock_agent_response = "The login function authenticates users using JWT tokens."
-        with patch('subprocess.run') as mock_run, \
-             patch('asyncio.run', return_value=mock_agent_response):
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("asyncio.run", return_value=mock_agent_response),
+        ):
             mock_run.return_value = Mock(returncode=0)
-            result = ask.run("owner/repo", 42, question="What does the login function do?")
+            result = ask.run(
+                "owner/repo", 42, question="What does the login function do?"
+            )
 
         assert "Kimi Answer" in result
         assert "login" in result.lower() or "JWT" in result

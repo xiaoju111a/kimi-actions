@@ -31,18 +31,24 @@ class Describe(BaseTool):
             return pr.title, "No changes detected."
 
         skill = self.get_skill()
-        skill_instructions = skill.instructions if skill else "Generate a PR description."
+        skill_instructions = (
+            skill.instructions if skill else "Generate a PR description."
+        )
 
         commits = list(pr.get_commits())
-        commit_messages = "\n".join([f"- {c.commit.message.split(chr(10))[0]}" for c in commits[:10]])
+        commit_messages = "\n".join(
+            [f"- {c.commit.message.split(chr(10))[0]}" for c in commits[:10]]
+        )
 
-        response = asyncio.run(self._run_agent_describe(
-            skill_instructions=skill_instructions,
-            pr_title=pr.title,
-            pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
-            commit_messages=commit_messages,
-            diff=compressed_diff
-        ))
+        response = asyncio.run(
+            self._run_agent_describe(
+                skill_instructions=skill_instructions,
+                pr_title=pr.title,
+                pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
+                commit_messages=commit_messages,
+                diff=compressed_diff,
+            )
+        )
 
         title, body, labels = self._parse_response(response, pr.title)
 
@@ -57,8 +63,12 @@ class Describe(BaseTool):
         return title, body
 
     async def _run_agent_describe(
-        self, skill_instructions: str, pr_title: str, pr_branch: str,
-        commit_messages: str, diff: str
+        self,
+        skill_instructions: str,
+        pr_title: str,
+        pr_branch: str,
+        commit_messages: str,
+        diff: str,
     ) -> str:
         """Run agent to generate PR description (no git clone needed)."""
         try:
@@ -105,11 +115,11 @@ files:
             with tempfile.TemporaryDirectory() as work_dir:
                 # Use auto-detected skills_dir from BaseTool
                 skills_path = self.get_skills_dir()
-                
+
                 # Convert to KaosPath for Agent SDK
                 work_dir_kaos = KaosPath(work_dir)
                 skills_dir_kaos = KaosPath(str(skills_path)) if skills_path else None
-                
+
                 async with await Session.create(
                     work_dir=work_dir_kaos,
                     model=self.AGENT_MODEL,
@@ -122,7 +132,7 @@ files:
                             text_parts.append(msg.text)
                         elif isinstance(msg, ApprovalRequest):
                             msg.resolve("approve")
-                
+
                 if skills_path:
                     logger.info(f"Describe used skills from: {skills_path}")
                 return "".join(text_parts)
@@ -135,7 +145,9 @@ files:
             logger.error(f"Agent execution failed: {e}")
             return f'```yaml\ntitle: "{pr_title}"\ndescription: "Error: {str(e)}"\n```'
 
-    def _parse_response(self, response: str, default_title: str) -> Tuple[str, str, List[str]]:
+    def _parse_response(
+        self, response: str, default_title: str
+    ) -> Tuple[str, str, List[str]]:
         """Parse YAML response."""
         try:
             yaml_content = response
@@ -153,7 +165,14 @@ files:
             files = data.get("files", [])
 
             body_parts = []
-            type_emojis = {"feature": "✨", "bug_fix": "🐛", "refactor": "♻️", "docs": "📝", "test": "🧪", "chore": "🔧"}
+            type_emojis = {
+                "feature": "✨",
+                "bug_fix": "🐛",
+                "refactor": "♻️",
+                "docs": "📝",
+                "test": "🧪",
+                "chore": "🔧",
+            }
             if pr_type:
                 emoji = type_emojis.get(pr_type, "📦")
                 body_parts.append(f"## {emoji} {pr_type.replace('_', ' ').title()}\n")
@@ -162,12 +181,19 @@ files:
                 body_parts.append(f"{description}\n")
 
             if files and self.config.describe.enable_walkthrough:
-                body_parts.append("## 📁 Changed Files\n| File | Type | Summary |\n|------|------|---------|")
-                change_icons = {"added": "➕", "modified": "📝", "deleted": "🗑️", "renamed": "📛"}
+                body_parts.append(
+                    "## 📁 Changed Files\n| File | Type | Summary |\n|------|------|---------|"
+                )
+                change_icons = {
+                    "added": "➕",
+                    "modified": "📝",
+                    "deleted": "🗑️",
+                    "renamed": "📛",
+                }
                 for f in files:
                     icon = change_icons.get(f.get("change_type", ""), "📄")
-                    filename = f.get('filename', '')
-                    summary = f.get('summary', '')
+                    filename = f.get("filename", "")
+                    summary = f.get("summary", "")
                     body_parts.append(f"| `{filename}` | {icon} | {summary} |")
                 body_parts.append("")
 

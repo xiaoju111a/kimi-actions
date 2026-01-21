@@ -31,7 +31,7 @@ class TestSuggestionService:
                 improved_code="new code",
                 one_sentence_summary="Bug fix",
                 label="bug",
-                severity=SeverityLevel.HIGH
+                severity=SeverityLevel.HIGH,
             ),
             CodeSuggestion(
                 id="2",
@@ -44,7 +44,7 @@ class TestSuggestionService:
                 improved_code="secure",
                 one_sentence_summary="Security fix",
                 label="security",
-                severity=SeverityLevel.CRITICAL
+                severity=SeverityLevel.CRITICAL,
             ),
             CodeSuggestion(
                 id="3",
@@ -57,7 +57,7 @@ class TestSuggestionService:
                 improved_code="fast",
                 one_sentence_summary="Perf improvement",
                 label="performance",
-                severity=SeverityLevel.LOW
+                severity=SeverityLevel.LOW,
             ),
         ]
 
@@ -91,7 +91,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="Same summary here",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
             CodeSuggestion(
                 id="2",
@@ -104,7 +104,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="Same summary here",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
         ]
         unique = service._remove_duplicates(suggestions)
@@ -123,7 +123,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="Same summary",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
             CodeSuggestion(
                 id="2",
@@ -136,7 +136,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="Same summary",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
         ]
         unique = service._remove_duplicates(suggestions)
@@ -154,7 +154,7 @@ class TestSuggestionService:
             improved_code="",
             one_sentence_summary="",
             label="bug",
-            severity=SeverityLevel.CRITICAL
+            severity=SeverityLevel.CRITICAL,
         )
         low = CodeSuggestion(
             id="2",
@@ -167,7 +167,7 @@ class TestSuggestionService:
             improved_code="",
             one_sentence_summary="",
             label="bug",
-            severity=SeverityLevel.LOW
+            severity=SeverityLevel.LOW,
         )
 
         assert service._calculate_score(critical) > service._calculate_score(low)
@@ -184,7 +184,7 @@ class TestSuggestionService:
             improved_code="",
             one_sentence_summary="",
             label="security",
-            severity=SeverityLevel.MEDIUM
+            severity=SeverityLevel.MEDIUM,
         )
         perf = CodeSuggestion(
             id="2",
@@ -197,7 +197,7 @@ class TestSuggestionService:
             improved_code="",
             one_sentence_summary="",
             label="performance",
-            severity=SeverityLevel.MEDIUM
+            severity=SeverityLevel.MEDIUM,
         )
 
         assert service._calculate_score(security) > service._calculate_score(perf)
@@ -215,7 +215,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
             CodeSuggestion(
                 id="2",
@@ -228,7 +228,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
         ]
 
@@ -260,7 +260,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="",
                 label="bug",
-                severity=SeverityLevel.MEDIUM
+                severity=SeverityLevel.MEDIUM,
             ),
         ]
 
@@ -289,7 +289,7 @@ class TestSuggestionService:
                 improved_code="",
                 one_sentence_summary="Thread safety issue",
                 label="bug",
-                severity=SeverityLevel.HIGH
+                severity=SeverityLevel.HIGH,
             ),
         ]
 

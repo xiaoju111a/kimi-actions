@@ -6,7 +6,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from repo_config import (
-    RepoConfig, validate_config, parse_repo_config, BUILTIN_SKILL_NAMES
+    RepoConfig,
+    validate_config,
+    parse_repo_config,
+    BUILTIN_SKILL_NAMES,
 )
 
 
@@ -25,7 +28,7 @@ class TestValidateConfig:
             "categories": {"bug": True, "security": False, "performance": True},
             "skill_overrides": {"code-review": "my-review"},
             "ignore_files": ["*.test.ts"],
-            "extra_instructions": "Use Chinese"
+            "extra_instructions": "Use Chinese",
         }
         result = validate_config(data)
         assert result.valid is True

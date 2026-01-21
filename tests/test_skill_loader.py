@@ -5,10 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from skill_loader import (
-    Skill, parse_skill_md, load_skill_from_dir,
-    SkillManager
-)
+from skill_loader import Skill, parse_skill_md, load_skill_from_dir, SkillManager
 
 
 class TestSkill:
@@ -22,9 +19,7 @@ class TestSkill:
 
     def test_matches_trigger(self):
         skill = Skill(
-            name="review",
-            description="Review",
-            triggers=["review", "check", "analyze"]
+            name="review", description="Review", triggers=["review", "check", "analyze"]
         )
         assert skill.matches("please review this") is True
         assert skill.matches("check my code") is True
@@ -32,9 +27,7 @@ class TestSkill:
 
     def test_get_reference(self):
         skill = Skill(
-            name="test",
-            description="Test",
-            references={"guide": "# Guide content"}
+            name="test", description="Test", references={"guide": "# Guide content"}
         )
         assert skill.get_reference("guide") == "# Guide content"
         assert skill.get_reference("nonexistent") == ""
@@ -191,7 +184,7 @@ class TestSkillManager:
         custom_skill = Skill(
             name="code-review",
             description="Custom review",
-            instructions="Custom instructions"
+            instructions="Custom instructions",
         )
         manager.custom_skills["code-review"] = custom_skill
 
@@ -204,8 +197,7 @@ class TestSkillManager:
 
         # Add custom override
         manager.custom_skills["code-review"] = Skill(
-            name="code-review",
-            description="Custom"
+            name="code-review", description="Custom"
         )
 
         # get_builtin_skill should return original
@@ -226,9 +218,7 @@ class TestSkillManager:
     def test_find_matching_skills(self):
         manager = SkillManager()
         manager.builtin_skills["test"] = Skill(
-            name="test",
-            description="Test skill",
-            triggers=["test", "check"]
+            name="test", description="Test skill", triggers=["test", "check"]
         )
 
         matches = manager.find_matching_skills("please test this")
@@ -237,9 +227,7 @@ class TestSkillManager:
     def test_find_by_trigger(self):
         manager = SkillManager()
         manager.builtin_skills["review"] = Skill(
-            name="review",
-            description="Review",
-            triggers=["review", "check"]
+            name="review", description="Review", triggers=["review", "check"]
         )
 
         matches = manager.find_by_trigger("review")
@@ -248,9 +236,7 @@ class TestSkillManager:
     def test_build_prompt(self):
         manager = SkillManager()
         manager.builtin_skills["test"] = Skill(
-            name="test",
-            description="Test",
-            instructions="Do the test thing."
+            name="test", description="Test", instructions="Do the test thing."
         )
 
         prompt = manager.build_prompt("test")

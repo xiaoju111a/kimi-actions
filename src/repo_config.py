@@ -53,10 +53,11 @@ BUILTIN_SKILL_NAMES = {"code-review", "describe", "improve", "ask"}
 @dataclass
 class RepoConfig:
     """Repository-level configuration from .kimi-config.yml.
-    
+
     Note: Custom skills are now loaded from .kimi/skills/ directory
     using the skill_loader module, not from this config file.
     """
+
     enabled: bool = True
     ignore_files: List[str] = field(default_factory=list)
     extra_instructions: str = ""
@@ -78,6 +79,7 @@ class RepoConfig:
 @dataclass
 class ConfigValidationResult:
     """Result of config validation."""
+
     valid: bool
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -85,7 +87,7 @@ class ConfigValidationResult:
 
 def validate_config(data: dict) -> ConfigValidationResult:
     """Validate .kimi-config.yml structure and values.
-    
+
     Returns:
         ConfigValidationResult with errors and warnings
     """
@@ -93,8 +95,13 @@ def validate_config(data: dict) -> ConfigValidationResult:
     warnings = []
 
     # Check top-level keys
-    valid_keys = {"enabled", "categories", "skill_overrides",
-                  "ignore_files", "extra_instructions"}
+    valid_keys = {
+        "enabled",
+        "categories",
+        "skill_overrides",
+        "ignore_files",
+        "extra_instructions",
+    }
     unknown_keys = set(data.keys()) - valid_keys
     if unknown_keys:
         # Check if user is using old 'skills' key
@@ -138,7 +145,9 @@ def validate_config(data: dict) -> ConfigValidationResult:
                         f"Valid names: {', '.join(sorted(BUILTIN_SKILL_NAMES))}"
                     )
                 if not isinstance(custom_name, str) or not custom_name:
-                    errors.append(f"skill_overrides['{builtin_name}'] must be a non-empty string")
+                    errors.append(
+                        f"skill_overrides['{builtin_name}'] must be a non-empty string"
+                    )
 
     # Validate 'ignore_files'
     if "ignore_files" in data:
@@ -154,25 +163,20 @@ def validate_config(data: dict) -> ConfigValidationResult:
             errors.append("'extra_instructions' must be a string")
 
     return ConfigValidationResult(
-        valid=len(errors) == 0,
-        errors=errors,
-        warnings=warnings
+        valid=len(errors) == 0, errors=errors, warnings=warnings
     )
 
 
 def parse_repo_config(content: str) -> Tuple[RepoConfig, ConfigValidationResult]:
     """Parse and validate .kimi-config.yml content.
-    
+
     Returns:
         Tuple of (RepoConfig, ConfigValidationResult)
     """
     try:
         data = yaml.safe_load(content) or {}
     except yaml.YAMLError as e:
-        result = ConfigValidationResult(
-            valid=False,
-            errors=[f"YAML parse error: {e}"]
-        )
+        result = ConfigValidationResult(valid=False, errors=[f"YAML parse error: {e}"])
         return RepoConfig(), result
 
     # Validate first
@@ -209,9 +213,11 @@ def parse_repo_config(content: str) -> Tuple[RepoConfig, ConfigValidationResult]
     return config, validation
 
 
-def load_repo_config(github_client, repo_name: str, ref: str = None) -> Tuple[RepoConfig, ConfigValidationResult]:
+def load_repo_config(
+    github_client, repo_name: str, ref: str = None
+) -> Tuple[RepoConfig, ConfigValidationResult]:
     """Load repository config from .kimi-config.yml.
-    
+
     Returns:
         Tuple of (RepoConfig, ConfigValidationResult)
     """
