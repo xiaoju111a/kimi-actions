@@ -209,30 +209,25 @@ Branch: {pr_branch}
 {diff[:DIFF_LIMIT_REVIEW]}
 ```
 
-## Important: Use Tools to Get Context
+## Important: Minimize Tool Usage
 
-The diff above may not show enough context. **You have access to the full repository.**
+The diff above shows the complete changes. **Only use tools when absolutely necessary.**
 
-When you need more information:
-```bash
-# Read complete files
-cat path/to/file.py
+Most reviews can be completed by analyzing the diff alone. Only read additional files if:
+- The diff references undefined functions/classes
+- You need to verify API contracts
+- Security context is missing
 
-# Search for function definitions
-grep -r "function_name" .
-
-# Check related files
-cat path/to/related_file.py
-```
-
-**Use these tools liberally.** It's better to read 5 files and make 1 accurate suggestion than to guess.
+**Goal: Complete review in 5-10 tool calls maximum.**
 
 ## Your Task
 
-1. **Understand the changes** - Read the diff and any related files you need
-2. **Find real issues** - Focus on bugs, security problems, and performance issues
+1. **Analyze the diff first** - Most issues are visible in the diff itself
+2. **Find real issues** - Focus on bugs, security problems, and performance issues  
 3. **Be specific and certain** - Only flag issues you're confident about
 4. **Provide working fixes** - Include concrete code examples
+
+**Efficiency is critical**: Aim to complete in 10-15 steps total.
 
 ## Output Format
 
@@ -281,7 +276,7 @@ suggestions:
                 work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
                 yolo=True,
-                max_steps_per_turn=50,
+                max_steps_per_turn=15,  # Reduced from 50 to minimize tool usage
                 skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(review_prompt):
