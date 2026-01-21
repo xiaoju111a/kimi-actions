@@ -366,13 +366,24 @@ suggestions:
         if suggestions:
             lines.append("**Issues found:**")
             sev_icons = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
+            
+            # Show first 5 issues
             for s in suggestions[:5]:
                 icon = sev_icons.get(s.severity.value, "⚪")
                 file_name = s.relevant_file or "unknown"
                 issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
                 lines.append(f"- {icon} `{file_name}`: {issue_summary}")
+            
+            # Show remaining issues in expandable section
             if len(suggestions) > 5:
-                lines.append(f"- ... and {len(suggestions) - 5} more")
+                lines.append("<details>")
+                lines.append(f"<summary>... and {len(suggestions) - 5} more</summary>\n")
+                for s in suggestions[5:]:
+                    icon = sev_icons.get(s.severity.value, "⚪")
+                    file_name = s.relevant_file or "unknown"
+                    issue_summary = (s.one_sentence_summary or "").replace("\n", " ").strip()
+                    lines.append(f"- {icon} `{file_name}`: {issue_summary}")
+                lines.append("\n</details>")
             lines.append("")
 
         lines.append(self.format_footer())
@@ -553,7 +564,11 @@ suggestions:
             for s in discarded[:3]:
                 lines.append(f"- {s.one_sentence_summary} (`{s.relevant_file}`)")
             if len(discarded) > 3:
-                lines.append(f"- ... and {len(discarded) - 3} more")
+                lines.append("<details>")
+                lines.append(f"<summary>... and {len(discarded) - 3} more</summary>\n")
+                for s in discarded[3:]:
+                    lines.append(f"- {s.one_sentence_summary} (`{s.relevant_file}`)")
+                lines.append("</details>")
             lines.append("</details>\n")
 
         if excluded_files:
@@ -561,7 +576,11 @@ suggestions:
             for chunk in excluded_files[:5]:
                 lines.append(f"- `{chunk.filename}`")
             if len(excluded_files) > 5:
-                lines.append(f"- ... and {len(excluded_files) - 5} more")
+                lines.append("<details>")
+                lines.append(f"<summary>... and {len(excluded_files) - 5} more</summary>\n")
+                for chunk in excluded_files[5:]:
+                    lines.append(f"- `{chunk.filename}`")
+                lines.append("</details>")
             lines.append("</details>\n")
 
         lines.append(self.format_footer())

@@ -205,8 +205,17 @@ suggestions:
                 file_name = s.get("relevant_file", "unknown")
                 summary = s.get("one_sentence_summary", "").replace("\n", " ").strip()
                 lines.append(f"- {icon} `{file_name}`: {summary}")
+            
+            # Show remaining suggestions in expandable section
             if len(suggestions) > 5:
-                lines.append(f"- ... and {len(suggestions) - 5} more")
+                lines.append("<details>")
+                lines.append(f"<summary>... and {len(suggestions) - 5} more</summary>\n")
+                for s in suggestions[5:]:
+                    icon = severity_icons.get(s.get("severity", "medium"), "⚪")
+                    file_name = s.get("relevant_file", "unknown")
+                    summary = s.get("one_sentence_summary", "").replace("\n", " ").strip()
+                    lines.append(f"- {icon} `{file_name}`: {summary}")
+                lines.append("\n</details>")
             lines.append("")
 
         lines.append(self.format_footer(f"{len(suggestions)} suggestions"))
