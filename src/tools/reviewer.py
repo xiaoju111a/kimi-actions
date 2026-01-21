@@ -66,21 +66,20 @@ class Reviewer(BaseTool):
 
         system_prompt = self._build_system_prompt(skill)
 
-        # Generate file descriptions first
-        file_summaries = self._generate_file_summaries(included_chunks, compressed_diff)
-
         with tempfile.TemporaryDirectory() as work_dir:
             if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
                 return f"### 🌗 Pull request overview\n\n❌ Failed to clone repository\n\n{self.format_footer()}"
 
             try:
-                response = asyncio.run(
-                    self._run_agent_review(
+                # Run file summary generation and main review in parallel
+                response, file_summaries = asyncio.run(
+                    self._run_parallel_review(
                         work_dir=work_dir,
                         system_prompt=system_prompt,
                         pr_title=pr.title,
                         pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
                         diff=compressed_diff,
+                        included_chunks=included_chunks,
                     )
                 )
             except Exception as e:
@@ -142,6 +141,37 @@ class Reviewer(BaseTool):
             file_summaries=file_summaries,
         )
         return summary
+
+    async def _run_parallel_review(
+        self,
+        work_dir: str,
+        system_prompt: str,
+        pr_title: str,
+        pr_branch: str,
+        diff: str,
+        included_chunks: List[DiffChunk],
+    ) -> Tuple[str, Dict[str, str]]:
+        """Run file summary generation and main review in parallel.
+        
+        Returns:
+            Tuple of (review_response, file_summaries)
+        """
+        # Create two tasks to run in parallel
+        review_task = self._run_agent_review(
+            work_dir=work_dir,
+            system_prompt=system_prompt,
+            pr_title=pr_title,
+            pr_branch=pr_branch,
+            diff=diff,
+        )
+        summary_task = self._generate_file_summaries_async(included_chunks, diff)
+
+        # Wait for both to complete in parallel
+        review_response, file_summaries = await asyncio.gather(
+            review_task, summary_task
+        )
+
+        return review_response, file_summaries
 
     async def _run_agent_review(
         self,
@@ -718,6 +748,97 @@ Requirements:
                                 msg.resolve("approve")
 
                 asyncio.run(run_summary())
+                response = "".join(text_parts)
+
+                # Parse the YAML response
+                data = self.parse_yaml_response(response)
+                if not data:
+                    return {}
+
+                summaries = {}
+                for fs in data.get("file_summaries", []):
+                    f = fs.get("file", "")
+                    desc = fs.get("description", "")
+                    if f and desc:
+                        summaries[f] = desc
+
+                logger.info(f"Generated summaries for {len(summaries)} files")
+                return summaries
+
+        except Exception as e:
+            logger.warning(f"Failed to generate file summaries: {e}")
+            return {}
+
+    async def _generate_file_summaries_async(
+        self, chunks: List[DiffChunk], diff: str
+    ) -> Dict[str, str]:
+        """Generate concise descriptions for each changed file using Agent (async version).
+
+        This runs in parallel with the main review to save time.
+        """
+        if not chunks:
+            return {}
+
+        try:
+            from kimi_agent_sdk import Session, ApprovalRequest, TextPart
+            from kaos.path import KaosPath
+        except ImportError:
+            logger.warning("kimi-agent-sdk not available for file summaries")
+            return {}
+
+        api_key = self.setup_agent_env()
+        if not api_key:
+            return {}
+
+        # Build a concise prompt with just file paths and their diffs
+        file_list = []
+        for chunk in chunks[:10]:  # Limit to first 10 files to save tokens
+            change_type = chunk.change_type or "modified"
+            file_list.append(f"- `{chunk.filename}` ({change_type})")
+
+        prompt = f"""Analyze these changed files and provide a ONE-sentence description for each.
+
+Files changed:
+{chr(10).join(file_list)}
+
+Diff preview (first 3000 chars):
+```diff
+{diff[:3000]}
+```
+
+Respond with ONLY a YAML code block:
+```yaml
+file_summaries:
+  - file: "path/to/file1.py"
+    description: "One specific sentence about what changed (e.g., 'Added JWT authentication with token expiration')"
+  - file: "path/to/file2.py"
+    description: "One specific sentence"
+```
+
+Requirements:
+- ONE sentence per file (max 100 chars)
+- Be specific about WHAT changed, not just "modified" or "updated"
+- Focus on the main change, not every detail
+- Use technical terms appropriately
+"""
+
+        try:
+            text_parts = []
+            with tempfile.TemporaryDirectory() as work_dir:
+                work_dir_kaos = KaosPath(work_dir)
+
+                async with await Session.create(
+                    work_dir=work_dir_kaos,
+                    model=self.AGENT_MODEL,
+                    yolo=True,
+                    max_steps_per_turn=10,  # Quick analysis
+                ) as session:
+                    async for msg in session.prompt(prompt):
+                        if isinstance(msg, TextPart):
+                            text_parts.append(msg.text)
+                        elif isinstance(msg, ApprovalRequest):
+                            msg.resolve("approve")
+
                 response = "".join(text_parts)
 
                 # Parse the YAML response
