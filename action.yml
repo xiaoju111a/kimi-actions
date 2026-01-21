@@ -23,7 +23,7 @@ inputs:
   model:
     description: 'Kimi model to use (kimi-k2-turbo-preview, kimi-k2-0905-preview, kimi-k2-thinking, kimi-k2-thinking-turbo)'
     required: false
-    default: 'kimi-k2-thinking'
+    default: 'kimi-k2-thinking-turbo'
   review_level:
     description: 'Review strictness (strict, normal, gentle)'
     required: false

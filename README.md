@@ -60,7 +60,7 @@
 │           ▼                                                     ▼            │
 │   ┌──────────────────────────────────────────┐        ┌──────────────┐       │
 │   │         Kimi Agent SDK                   │        │  GitHub API  │       │
-│   │         (kimi-k2-thinking)               │        │    (REST)    │       │
+│   │         (kimi-k2-thinking-turbo)         │        │    (REST)    │       │
 │   │                                          │        │              │       │
 │   │  • Automatic token management            │        │              │       │
 │   │  • Automatic script execution            │        │              │       │
@@ -235,7 +235,7 @@ Use these commands in Issue comments:
     # Optional
     kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Custom API endpoint (optional, defaults to https://api.moonshot.cn/v1)
     language: 'en-US'               # Response language: zh-CN, en-US
-    model: 'kimi-k2-thinking'       # Kimi model (default: kimi-k2-thinking)
+    model: 'kimi-k2-thinking-turbo' # Kimi model (default: kimi-k2-thinking-turbo, or kimi-k2-thinking for more thorough analysis)
     review_level: 'normal'          # Review strictness: strict, normal, gentle
     max_files: '10'                 # Max files to review
     exclude_patterns: '*.lock,*.min.js'  # File patterns to exclude
@@ -314,11 +314,11 @@ Skills are automatically triggered based on PR code content.
 
 | Model | Context | Notes |
 |-------|---------|-------|
-| `kimi-k2-thinking` | 256K | Default, best reasoning capability |
-| `kimi-k2-thinking-turbo` | 256K | Faster thinking model |
+| `kimi-k2-thinking-turbo` | 256K | **Default**, faster thinking model, good balance |
+| `kimi-k2-thinking` | 256K | More thorough reasoning, slower |
 | `kimi-k2-turbo-preview` | 256K | Fast, for simple tasks |
 
-All commands use **Kimi Agent SDK** with `kimi-k2-thinking` model for best results.
+All commands use **Kimi Agent SDK** with `kimi-k2-thinking-turbo` model by default for best speed/quality balance.
 
 When PR is too large, the action uses intelligent chunking to prioritize important files.
 

@@ -386,7 +386,7 @@ class BaseTool(ABC):
             Number of comments posted
         """
         comments = []
-        footer = "\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `kimi-k2-thinking`</sub>"
+        footer = f"\n\n---\n<sub>Powered by [Kimi](https://kimi.moonshot.cn/) | Model: `{self.AGENT_MODEL}`</sub>"
         skipped = []
 
         for s in suggestions:
