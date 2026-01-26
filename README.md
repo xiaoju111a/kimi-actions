@@ -1,5 +1,9 @@
 # Kimi Code Review Action
 
+基于 [Kimi](https://kimi.moonshot.cn/) (月之暗面 AI) 的智能代码审查工具
+
+这是一个自动化的 GitHub Action，通过 AI 技术为 Pull Request 提供智能代码审查、问题分类和改进建议。
+
 🌗 AI-powered code review using [Kimi](https://kimi.moonshot.cn/) (Moonshot AI)
 
 ## Architecture
