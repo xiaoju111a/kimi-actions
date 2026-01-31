@@ -21,9 +21,9 @@ inputs:
     required: false
     default: 'en-US'
   model:
-    description: 'Kimi model to use (kimi-k2-turbo-preview, kimi-k2-0905-preview, kimi-k2-thinking, kimi-k2-thinking-turbo)'
+    description: 'Kimi model to use (kimi-k2.5, kimi-k2-turbo-preview, kimi-k2-0905-preview, kimi-k2-thinking, kimi-k2-thinking-turbo)'
     required: false
-    default: 'kimi-k2-thinking-turbo'
+    default: 'kimi-k2.5'
   review_level:
     description: 'Review strictness (strict, normal, gentle)'
     required: false
