@@ -701,10 +701,10 @@ suggestions:
             return []
 
     def _validate_suggestion_quality(self, s: CodeSuggestion) -> bool:
-        """Validate suggestion quality to filter out vague or uncertain suggestions.
+        """Validate suggestion quality with minimal filtering.
 
         Returns:
-            True if suggestion meets quality standards, False otherwise
+            True if suggestion meets basic quality standards, False otherwise
         """
         # Must have specific line numbers
         if not s.relevant_lines_start or s.relevant_lines_start <= 0:
@@ -713,64 +713,20 @@ suggestions:
             )
             return False
 
-        # Must have both existing and improved code
-        if not s.existing_code or not s.improved_code:
+        # Must have at least one of: existing_code, improved_code, or meaningful content
+        has_code = bool(s.existing_code or s.improved_code)
+        has_content = bool(s.suggestion_content and len(s.suggestion_content.strip()) > 5)
+        
+        if not (has_code or has_content):
             logger.debug(
-                f"Rejected: missing code examples - {s.one_sentence_summary[:50]}"
+                f"Rejected: no code or content - {s.one_sentence_summary[:50]}"
             )
             return False
 
-        # Code must be different
-        if s.existing_code.strip() == s.improved_code.strip():
-            logger.debug(f"Rejected: identical code - {s.one_sentence_summary[:50]}")
-            return False
-
-        # Must have meaningful content
-        if not s.suggestion_content or len(s.suggestion_content.strip()) < 20:
-            logger.debug(f"Rejected: too short content - {s.one_sentence_summary[:50]}")
-            return False
-
-        # Check for uncertain language
-        uncertain_words = [
-            "might",
-            "probably",
-            "likely",
-            "appears to",
-            "seems to",
-            "could be",
-            "may be",
-            "may cause",
-            "possibly",
-            "perhaps",
-            "maybe",
-        ]
-        content_lower = s.suggestion_content.lower()
-        summary_lower = s.one_sentence_summary.lower()
-
-        for word in uncertain_words:
-            if word in content_lower or word in summary_lower:
-                logger.debug(
-                    f"Rejected: uncertain language '{word}' - {s.one_sentence_summary[:50]}"
-                )
-                return False
-
-        # Check for vague descriptions
-        vague_phrases = [
-            "improve",
-            "consider",
-            "should",
-            "better to",
-            "it would be",
-            "you might want",
-            "try to",
-            "think about",
-        ]
-
-        for phrase in vague_phrases:
-            if phrase in content_lower[:50]:  # Check first 50 chars
-                logger.debug(
-                    f"Rejected: vague opening '{phrase}' - {s.one_sentence_summary[:50]}"
-                )
+        # Code must be different if both provided
+        if s.existing_code and s.improved_code:
+            if s.existing_code.strip() == s.improved_code.strip():
+                logger.debug(f"Rejected: identical code - {s.one_sentence_summary[:50]}")
                 return False
 
         return True

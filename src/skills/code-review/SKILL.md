@@ -76,17 +76,49 @@ cat path/to/related_file.py
 
 Use tools strategically - only when the diff lacks context.
 
+## Special Case: Deletion-Heavy PRs
+
+When a PR **deletes significant code** (entire files, functions, or features), check:
+
+### P0 - Critical Checks for Deletions
+1. **Breaking changes**: Search for usages of deleted functions/classes
+   ```bash
+   grep -r "DeletedClassName" .
+   grep -r "deleted_function_name" .
+   ```
+2. **Test coverage**: Check if tests for deleted code still exist
+   ```bash
+   cat tests/test_deleted_feature.py  # Should this be deleted too?
+   ```
+
+### P1 - High Priority for Deletions
+3. **Configuration cleanup**: Check if config files reference deleted features
+   ```bash
+   grep -r "deleted_feature" *.yml *.yaml *.json *.toml
+   ```
+4. **Documentation updates**: Check if docs mention deleted features
+   ```bash
+   grep -r "deleted_feature" README.md docs/
+   ```
+
+### P2 - Medium Priority for Deletions
+5. **Import cleanup**: Check for unused imports after deletion
+6. **Dead code**: Check if deletion creates new unreachable code
+
+**For deletion PRs**: Focus on **completeness** - was everything related to the deleted feature removed?
+
 ## Review Process
 
-1. **Read diff** → Understand changes
-2. **Get context** → Use `cat` if needed
-3. **Find P0 issues** → Bugs, security, data corruption
-4. **Find P1 issues** → Performance, error handling
-5. **Skip P2** → Unless obvious
-6. **Check P3** → Only if few higher priority issues
-7. **Verify** → Is it new code? Can I fix it? Is it valuable?
-8. **Generate YAML** → Use format below
-9. **Validate** → Check that your YAML is valid (no Python code, no type hints, no text outside YAML block)
+1. **Read diff** → Understand changes (additions vs deletions)
+2. **If deletion-heavy** → Follow "Special Case: Deletion-Heavy PRs" checklist above
+3. **Get context** → Use `cat` if needed
+4. **Find P0 issues** → Bugs, security, data corruption
+5. **Find P1 issues** → Performance, error handling
+6. **Skip P2** → Unless obvious
+7. **Check P3** → Only if few higher priority issues
+8. **Verify** → Is it new code? Can I fix it? Is it valuable?
+9. **Generate YAML** → Use format below
+10. **Validate** → Check that your YAML is valid (no Python code, no type hints, no text outside YAML block)
 
 ## Output Format
 
