@@ -323,20 +323,6 @@ def get_help_message() -> str:
 /ask Why is this approach used here?
 ```
 
----
-<sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
-"""
-| `/labels` | Auto-generate and apply PR labels |
-| `/help` | Show this help message |
-
-### Examples
-
-```bash
-/review                    # Automatically uses incremental or full review
-/ask What is the time complexity of this function?
-/labels
-```
-
 ### Smart Incremental Review
 
 The `/review` command automatically detects the best review strategy:
@@ -345,7 +331,7 @@ The `/review` command automatically detects the best review strategy:
 - **Old reviews (>7 days)**: Automatically does full re-review
 - **No new commits**: Shows "no changes" message
 
-No parameters needed - it just works! 🎯
+No parameters needed - it just works!
 
 ---
 <sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
