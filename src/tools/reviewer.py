@@ -37,7 +37,6 @@ class Reviewer(BaseTool):
         - Age of previous review (<7 days)
         - Presence of new commits
         """
-        inline = kwargs.get("inline", True)
         command_quote = kwargs.get("command_quote", "")
 
         pr = self.github.get_pr(repo_name, pr_number)
@@ -110,29 +109,11 @@ class Reviewer(BaseTool):
             if included_chunks
             else len(set(s.relevant_file for s in filtered if s.relevant_file))
         )
-        posted_count = 0
-        if inline and filtered:
-            summary = self._format_inline_summary(
-                response,
-                filtered,
-                len(filtered),
-                total_files=total_files,
-                included_chunks=included_chunks,
-                incremental=incremental,
-                current_sha=pr.head.sha,
-                command_quote=command_quote,
-                file_summaries=file_summaries,
-            )
-            posted_count = self._post_inline_comments(
-                repo_name, pr_number, filtered, summary_body=summary
-            )
-            if posted_count > 0:
-                return ""
 
-        summary = self._format_inline_summary(
+        # Format as Markdown comment (no inline comments)
+        summary = self._format_markdown_review(
             response,
             filtered,
-            posted_count,
             total_files=total_files,
             included_chunks=included_chunks,
             incremental=incremental,
@@ -390,6 +371,150 @@ suggestions:
             use_suggestion_format=True,
         )
 
+    def _format_markdown_review(
+        self,
+        response: str,
+        suggestions: List[CodeSuggestion],
+        total_files: int = 0,
+        included_chunks: List[DiffChunk] = None,
+        incremental: bool = False,
+        current_sha: str = None,
+        command_quote: str = "",
+        file_summaries: Dict[str, str] = None,
+    ) -> str:
+        """Format review as Markdown comment with all suggestions displayed."""
+        data = self.parse_yaml_response(response) or {}
+        summary = data.get("summary", "").strip()
+
+        # Merge file summaries from agent response with pre-generated ones
+        merged_summaries = file_summaries or {}
+        for fs in data.get("file_summaries", []):
+            f = fs.get("file", "")
+            desc = fs.get("description", "")
+            if f and desc:
+                merged_summaries[f] = desc
+
+        lines = []
+        if command_quote:
+            lines.append(f"> {command_quote}")
+            lines.append("")
+
+        lines.append("### 🌗 Pull request overview")
+        if summary:
+            lines.append(f"{summary}\n")
+        else:
+            lines.append("Code review completed.\n")
+
+        files_reviewed = (
+            total_files
+            if total_files > 0
+            else len(included_chunks)
+            if included_chunks
+            else 0
+        )
+        lines.append("**Reviewed changes**")
+
+        # Add incremental review indicator
+        review_type = "incremental review" if incremental else "full review"
+        lines.append(
+            f"Kimi performed {review_type} on {files_reviewed} changed files and found {len(suggestions)} issues.\n"
+        )
+
+        if included_chunks:
+            lines.append("<details>")
+            lines.append("<summary>Show a summary per file</summary>\n")
+            lines.append("| File | Description |")
+            lines.append("|------|-------------|")
+            for chunk in included_chunks:
+                if chunk.filename in merged_summaries:
+                    desc = merged_summaries[chunk.filename]
+                else:
+                    # Generate more meaningful default descriptions
+                    change_type_desc = {
+                        "added": "New file added",
+                        "deleted": "File removed",
+                        "modified": "Modified",
+                        "renamed": "File renamed",
+                    }.get(chunk.change_type, "Modified")
+
+                    # Add language info if available
+                    lang_info = f" ({chunk.language})" if chunk.language else ""
+                    desc = f"{change_type_desc}{lang_info}"
+
+                lines.append(f"| `{chunk.filename}` | {desc} |")
+            lines.append("\n</details>\n")
+
+        if suggestions:
+            lines.append("---\n")
+            lines.append("## 📋 Review Findings\n")
+
+            # Group suggestions by file
+            by_file = {}
+            for s in suggestions:
+                file_name = s.relevant_file or "unknown"
+                if file_name not in by_file:
+                    by_file[file_name] = []
+                by_file[file_name].append(s)
+
+            # Display suggestions grouped by file
+            for file_name, file_suggestions in sorted(by_file.items()):
+                lines.append(f"### 📄 `{file_name}`\n")
+
+                for idx, s in enumerate(file_suggestions, 1):
+                    icon = SEVERITY_ICONS.get(s.severity.value, "⚪")
+                    severity_label = s.severity.value.upper()
+                    label_badge = f"`{s.label}`" if s.label else ""
+
+                    # Header
+                    lines.append(
+                        f"#### {icon} **{severity_label}** {label_badge}: {s.one_sentence_summary}"
+                    )
+
+                    # Location
+                    if s.relevant_lines_start:
+                        if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
+                            lines.append(
+                                f"**Lines {s.relevant_lines_start}-{s.relevant_lines_end}**\n"
+                            )
+                        else:
+                            lines.append(f"**Line {s.relevant_lines_start}**\n")
+
+                    # Description
+                    if s.suggestion_content:
+                        lines.append(s.suggestion_content.strip())
+                        lines.append("")
+
+                    # Code comparison
+                    if s.existing_code or s.improved_code:
+                        lines.append("<details>")
+                        lines.append("<summary>💡 Suggested fix</summary>\n")
+
+                        if s.existing_code:
+                            lang = s.language or "text"
+                            lines.append("**Current code:**")
+                            lines.append(f"```{lang}")
+                            lines.append(s.existing_code.strip())
+                            lines.append("```\n")
+
+                        if s.improved_code:
+                            lang = s.language or "text"
+                            lines.append("**Improved code:**")
+                            lines.append(f"```{lang}")
+                            lines.append(s.improved_code.strip())
+                            lines.append("```")
+
+                        lines.append("</details>\n")
+
+                    lines.append("---\n")
+
+        else:
+            lines.append("\n✅ **No issues found!** The code looks good.\n")
+
+        lines.append(self.format_footer())
+        if current_sha:
+            lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
+        return "\n".join(lines)
+
     def _format_inline_summary(
         self,
         response: str,
@@ -576,10 +701,10 @@ suggestions:
             return []
 
     def _validate_suggestion_quality(self, s: CodeSuggestion) -> bool:
-        """Validate suggestion quality to filter out vague or uncertain suggestions.
+        """Validate suggestion quality with minimal filtering.
 
         Returns:
-            True if suggestion meets quality standards, False otherwise
+            True if suggestion meets basic quality standards, False otherwise
         """
         # Must have specific line numbers
         if not s.relevant_lines_start or s.relevant_lines_start <= 0:
@@ -588,64 +713,20 @@ suggestions:
             )
             return False
 
-        # Must have both existing and improved code
-        if not s.existing_code or not s.improved_code:
+        # Must have at least one of: existing_code, improved_code, or meaningful content
+        has_code = bool(s.existing_code or s.improved_code)
+        has_content = bool(s.suggestion_content and len(s.suggestion_content.strip()) > 5)
+        
+        if not (has_code or has_content):
             logger.debug(
-                f"Rejected: missing code examples - {s.one_sentence_summary[:50]}"
+                f"Rejected: no code or content - {s.one_sentence_summary[:50]}"
             )
             return False
 
-        # Code must be different
-        if s.existing_code.strip() == s.improved_code.strip():
-            logger.debug(f"Rejected: identical code - {s.one_sentence_summary[:50]}")
-            return False
-
-        # Must have meaningful content
-        if not s.suggestion_content or len(s.suggestion_content.strip()) < 20:
-            logger.debug(f"Rejected: too short content - {s.one_sentence_summary[:50]}")
-            return False
-
-        # Check for uncertain language
-        uncertain_words = [
-            "might",
-            "probably",
-            "likely",
-            "appears to",
-            "seems to",
-            "could be",
-            "may be",
-            "may cause",
-            "possibly",
-            "perhaps",
-            "maybe",
-        ]
-        content_lower = s.suggestion_content.lower()
-        summary_lower = s.one_sentence_summary.lower()
-
-        for word in uncertain_words:
-            if word in content_lower or word in summary_lower:
-                logger.debug(
-                    f"Rejected: uncertain language '{word}' - {s.one_sentence_summary[:50]}"
-                )
-                return False
-
-        # Check for vague descriptions
-        vague_phrases = [
-            "improve",
-            "consider",
-            "should",
-            "better to",
-            "it would be",
-            "you might want",
-            "try to",
-            "think about",
-        ]
-
-        for phrase in vague_phrases:
-            if phrase in content_lower[:50]:  # Check first 50 chars
-                logger.debug(
-                    f"Rejected: vague opening '{phrase}' - {s.one_sentence_summary[:50]}"
-                )
+        # Code must be different if both provided
+        if s.existing_code and s.improved_code:
+            if s.existing_code.strip() == s.improved_code.strip():
+                logger.debug(f"Rejected: identical code - {s.one_sentence_summary[:50]}")
                 return False
 
         return True

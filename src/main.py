@@ -8,7 +8,7 @@ import sys
 
 from action_config import ActionConfig
 from github_client import GitHubClient
-from tools import Reviewer, Describe, Improve, Ask, Labels, Triage
+from tools import Reviewer, Ask
 
 # Configure logging
 logging.basicConfig(
@@ -76,27 +76,14 @@ def handle_pr_event(event: dict, config: ActionConfig):
 
     # Auto actions on PR open/sync
     auto_review = get_input("auto_review", "true").lower() == "true"
-    auto_describe = get_input("auto_describe", "false").lower() == "true"
-    auto_improve = get_input("auto_improve", "false").lower() == "true"
 
     try:
-        if auto_describe and action in ["opened"]:
-            logger.info("Running auto describe...")
-            describe = Describe(github)
-            describe.run(repo_name, pr_number, update_pr=True)
-
         if auto_review:
             logger.info("Running auto review...")
             reviewer = Reviewer(github)
-            result = reviewer.run(repo_name, pr_number, inline=True)
-            if result:  # Only post if not empty (inline already posted)
+            result = reviewer.run(repo_name, pr_number)
+            if result:
                 github.post_comment(repo_name, pr_number, result)
-
-        if auto_improve:
-            logger.info("Running auto improve...")
-            improve = Improve(github)
-            result = improve.run(repo_name, pr_number)
-            github.post_comment(repo_name, pr_number, result)
 
         logger.info("Done!")
     except Exception as e:
@@ -233,31 +220,8 @@ def handle_comment_event(event: dict, config: ActionConfig):
         if command == "review":
             reviewer = Reviewer(github)
             result = reviewer.run(
-                repo_name, pr_number, inline=True, command_quote="/review"
+                repo_name, pr_number, command_quote="/review"
             )
-            # Don't add quote again - reviewer already includes it
-            if result:
-                github.post_comment(repo_name, pr_number, result)
-                result = None  # Prevent double posting below
-
-        elif command == "describe":
-            describe = Describe(github)
-            if args == "--comment":
-                result = describe.generate_comment(repo_name, pr_number)
-            else:
-                describe.run(repo_name, pr_number, update_pr=True)
-                result = "✅ PR description updated"
-
-        elif command == "improve":
-            improve = Improve(github)
-            # Build command string for quote (improve will add it to the result)
-            original_command = "/improve"
-            if args:
-                original_command += f" {args}"
-            result = improve.run(
-                repo_name, pr_number, inline=True, command_quote=original_command
-            )
-            # Don't add quote again - improve already includes it
             if result:
                 github.post_comment(repo_name, pr_number, result)
                 result = None  # Prevent double posting below
@@ -308,15 +272,8 @@ def handle_comment_event(event: dict, config: ActionConfig):
                     if ">" in comment_body:
                         result += "\n\n💡 **Tip**: For code-specific questions, use `/ask` directly in the **Files changed** tab by clicking the **+** button next to the line of code."
 
-        elif command == "labels" or command == "label":
-            labels_tool = Labels(github)
-            result = labels_tool.run(repo_name, pr_number)
-
         elif command == "help":
             result = get_help_message()
-
-        elif command == "triage":
-            result = "❌ `/triage` command is only available for Issues, not Pull Requests.\n\nUse `/labels` to auto-generate PR labels instead."
 
         else:
             result = f"❌ Unknown command: `/{command}`\n\nUse `/help` to see available commands."
@@ -340,144 +297,6 @@ def handle_comment_event(event: dict, config: ActionConfig):
     logger.info("Done!")
 
 
-def handle_issue_event(event: dict, config: ActionConfig):
-    """Handle issues event (auto triage on issue open)."""
-    action = event.get("action")
-    if action not in ["opened", "reopened"]:
-        return
-
-    issue = event.get("issue", {})
-    issue_number = issue.get("number")
-    repo_name = event.get("repository", {}).get("full_name")
-
-    # Skip if this is a PR (PRs are also issues in GitHub API)
-    if "pull_request" in issue:
-        logger.info("This is a PR, skipping issue handler")
-        return
-
-    logger.info(f"Issue #{issue_number} in {repo_name} - action: {action}")
-
-    # Initialize clients
-    try:
-        github = GitHubClient(config.github_token)
-    except Exception as e:
-        logger.error(f"Failed to initialize clients: {e}")
-        return
-
-    # Auto triage on issue open
-    auto_triage = get_input("auto_triage", "false").lower() == "true"
-
-    if auto_triage:
-        try:
-            logger.info("Running auto triage...")
-            triage = Triage(github)
-            result = triage.run(repo_name, issue_number, apply_labels=True)
-            github.post_issue_comment(repo_name, issue_number, result)
-            logger.info("Done!")
-        except Exception as e:
-            logger.error(f"Error triaging issue: {e}")
-            try:
-                github.post_issue_comment(
-                    repo_name, issue_number, f"❌ Error triaging issue: {str(e)}"
-                )
-            except Exception:
-                pass
-
-
-def handle_issue_comment_event(event: dict, config: ActionConfig):
-    """Handle issue_comment event on non-PR issues (command trigger)."""
-    action = event.get("action")
-    if action not in ["created", "edited"]:
-        return
-
-    comment = event.get("comment", {})
-    comment_body = comment.get("body", "")
-
-    # Check if this is NOT a PR comment (handle regular issues)
-    issue = event.get("issue", {})
-    if "pull_request" in issue:
-        # This is a PR comment, let handle_comment_event handle it
-        return
-
-    # Parse command
-    command, args = parse_command(comment_body)
-    if not command:
-        return
-
-    issue_number = issue.get("number")
-    repo_name = event.get("repository", {}).get("full_name")
-
-    logger.info(f"Issue command: /{command} {args}")
-    logger.info(f"Issue #{issue_number} in {repo_name}")
-
-    # Initialize clients
-    try:
-        github = GitHubClient(config.github_token)
-    except Exception as e:
-        logger.error(f"Failed to initialize clients: {e}")
-        return
-
-    # Add reaction to show we're processing
-    github.add_issue_reaction(repo_name, issue_number, comment.get("id"), "eyes")
-
-    # Handle commands
-    result = None
-
-    try:
-        if command == "triage":
-            triage = Triage(github)
-            # Check for --no-apply flag
-            apply_labels = "--no-apply" not in args and "-n" not in args
-            result = triage.run(repo_name, issue_number, apply_labels=apply_labels)
-
-        elif command == "help":
-            result = get_issue_help_message()
-
-        else:
-            result = f"❌ Unknown command: `/{command}`\n\nUse `/help` to see available commands for issues."
-
-    except Exception as e:
-        logger.error(f"Error handling command /{command}: {e}")
-        result = f"❌ Error executing command: {str(e)}"
-
-    # Post result with command quote
-    if result:
-        try:
-            original_command = f"/{command}"
-            if args:
-                original_command += f" {args}"
-            quoted_result = f"> {original_command}\n\n{result}"
-            github.post_issue_comment(repo_name, issue_number, quoted_result)
-        except Exception as e:
-            logger.error(f"Failed to post result: {e}")
-
-    logger.info("Done!")
-
-
-def get_issue_help_message() -> str:
-    """Get help message for issue commands."""
-    return """## 🌗 Kimi Actions Help (Issues)
-
-### Available Commands
-
-| Command | Description |
-|---------|-------------|
-| `/triage` | Auto-classify issue type and suggest labels |
-| `/triage --no-apply` | Classify without applying labels |
-| `/help` | Show this help message |
-
-### Examples
-
-```bash
-/triage
-/triage --no-apply
-```
-
----
-<sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
-"""
-
-
 def get_help_message() -> str:
     """Get help message with available commands."""
     return """## 🌗 Kimi Actions Help
@@ -486,20 +305,22 @@ def get_help_message() -> str:
 
 | Command | Description |
 |---------|-------------|
-| `/review` | Smart code review with inline comments (auto-detects incremental) |
-| `/describe` | Auto-generate PR description |
-| `/describe --comment` | Generate description as comment |
-| `/improve` | Provide code improvement suggestions |
-| `/ask <question>` | Q&A about the PR |
-| `/labels` | Auto-generate and apply PR labels |
+| `/review` | Smart code review (auto-detects incremental) |
+| `/ask <question>` | Q&A about the PR or specific code |
 | `/help` | Show this help message |
 
 ### Examples
 
 ```bash
-/review                    # Automatically uses incremental or full review
-/ask What is the time complexity of this function?
-/labels
+# Review the PR
+/review
+
+# Ask a general question
+/ask What does this PR do?
+
+# Ask about specific code (in Files changed tab)
+# Click the + button next to a line, then:
+/ask Why is this approach used here?
 ```
 
 ### Smart Incremental Review
@@ -510,7 +331,7 @@ The `/review` command automatically detects the best review strategy:
 - **Old reviews (>7 days)**: Automatically does full re-review
 - **No new commits**: Shows "no changes" message
 
-No parameters needed - it just works! 🎯
+No parameters needed - it just works!
 
 ---
 <sub>Powered by [Kimi](https://kimi.moonshot.cn/) with Agent SDK</sub>
@@ -552,12 +373,7 @@ def main():
         handle_pr_event(event, config)
     elif event_name == "issue_comment":
         # issue_comment fires for both PR and Issue comments
-        # Try issue handler first (it will skip if it's a PR)
-        handle_issue_comment_event(event, config)
-        # Then try PR handler (it will skip if it's not a PR)
         handle_comment_event(event, config)
-    elif event_name == "issues":
-        handle_issue_event(event, config)
     elif event_name == "pull_request_review_comment":
         handle_review_comment_event(event, config)
     else:
