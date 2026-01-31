@@ -37,7 +37,6 @@ class Reviewer(BaseTool):
         - Age of previous review (<7 days)
         - Presence of new commits
         """
-        inline = kwargs.get("inline", True)
         command_quote = kwargs.get("command_quote", "")
 
         pr = self.github.get_pr(repo_name, pr_number)
@@ -110,29 +109,11 @@ class Reviewer(BaseTool):
             if included_chunks
             else len(set(s.relevant_file for s in filtered if s.relevant_file))
         )
-        posted_count = 0
-        if inline and filtered:
-            summary = self._format_inline_summary(
-                response,
-                filtered,
-                len(filtered),
-                total_files=total_files,
-                included_chunks=included_chunks,
-                incremental=incremental,
-                current_sha=pr.head.sha,
-                command_quote=command_quote,
-                file_summaries=file_summaries,
-            )
-            posted_count = self._post_inline_comments(
-                repo_name, pr_number, filtered, summary_body=summary
-            )
-            if posted_count > 0:
-                return ""
 
-        summary = self._format_inline_summary(
+        # Format as Markdown comment (no inline comments)
+        summary = self._format_markdown_review(
             response,
             filtered,
-            posted_count,
             total_files=total_files,
             included_chunks=included_chunks,
             incremental=incremental,
@@ -389,6 +370,150 @@ suggestions:
             summary_body=summary_body,
             use_suggestion_format=True,
         )
+
+    def _format_markdown_review(
+        self,
+        response: str,
+        suggestions: List[CodeSuggestion],
+        total_files: int = 0,
+        included_chunks: List[DiffChunk] = None,
+        incremental: bool = False,
+        current_sha: str = None,
+        command_quote: str = "",
+        file_summaries: Dict[str, str] = None,
+    ) -> str:
+        """Format review as Markdown comment with all suggestions displayed."""
+        data = self.parse_yaml_response(response) or {}
+        summary = data.get("summary", "").strip()
+
+        # Merge file summaries from agent response with pre-generated ones
+        merged_summaries = file_summaries or {}
+        for fs in data.get("file_summaries", []):
+            f = fs.get("file", "")
+            desc = fs.get("description", "")
+            if f and desc:
+                merged_summaries[f] = desc
+
+        lines = []
+        if command_quote:
+            lines.append(f"> {command_quote}")
+            lines.append("")
+
+        lines.append("### 🌗 Pull request overview")
+        if summary:
+            lines.append(f"{summary}\n")
+        else:
+            lines.append("Code review completed.\n")
+
+        files_reviewed = (
+            total_files
+            if total_files > 0
+            else len(included_chunks)
+            if included_chunks
+            else 0
+        )
+        lines.append("**Reviewed changes**")
+
+        # Add incremental review indicator
+        review_type = "incremental review" if incremental else "full review"
+        lines.append(
+            f"Kimi performed {review_type} on {files_reviewed} changed files and found {len(suggestions)} issues.\n"
+        )
+
+        if included_chunks:
+            lines.append("<details>")
+            lines.append("<summary>Show a summary per file</summary>\n")
+            lines.append("| File | Description |")
+            lines.append("|------|-------------|")
+            for chunk in included_chunks:
+                if chunk.filename in merged_summaries:
+                    desc = merged_summaries[chunk.filename]
+                else:
+                    # Generate more meaningful default descriptions
+                    change_type_desc = {
+                        "added": "New file added",
+                        "deleted": "File removed",
+                        "modified": "Modified",
+                        "renamed": "File renamed",
+                    }.get(chunk.change_type, "Modified")
+
+                    # Add language info if available
+                    lang_info = f" ({chunk.language})" if chunk.language else ""
+                    desc = f"{change_type_desc}{lang_info}"
+
+                lines.append(f"| `{chunk.filename}` | {desc} |")
+            lines.append("\n</details>\n")
+
+        if suggestions:
+            lines.append("---\n")
+            lines.append("## 📋 Review Findings\n")
+
+            # Group suggestions by file
+            by_file = {}
+            for s in suggestions:
+                file_name = s.relevant_file or "unknown"
+                if file_name not in by_file:
+                    by_file[file_name] = []
+                by_file[file_name].append(s)
+
+            # Display suggestions grouped by file
+            for file_name, file_suggestions in sorted(by_file.items()):
+                lines.append(f"### 📄 `{file_name}`\n")
+
+                for idx, s in enumerate(file_suggestions, 1):
+                    icon = SEVERITY_ICONS.get(s.severity.value, "⚪")
+                    severity_label = s.severity.value.upper()
+                    label_badge = f"`{s.label}`" if s.label else ""
+
+                    # Header
+                    lines.append(
+                        f"#### {icon} **{severity_label}** {label_badge}: {s.one_sentence_summary}"
+                    )
+
+                    # Location
+                    if s.relevant_lines_start:
+                        if s.relevant_lines_end and s.relevant_lines_end != s.relevant_lines_start:
+                            lines.append(
+                                f"**Lines {s.relevant_lines_start}-{s.relevant_lines_end}**\n"
+                            )
+                        else:
+                            lines.append(f"**Line {s.relevant_lines_start}**\n")
+
+                    # Description
+                    if s.suggestion_content:
+                        lines.append(s.suggestion_content.strip())
+                        lines.append("")
+
+                    # Code comparison
+                    if s.existing_code or s.improved_code:
+                        lines.append("<details>")
+                        lines.append("<summary>💡 Suggested fix</summary>\n")
+
+                        if s.existing_code:
+                            lang = s.language or "text"
+                            lines.append("**Current code:**")
+                            lines.append(f"```{lang}")
+                            lines.append(s.existing_code.strip())
+                            lines.append("```\n")
+
+                        if s.improved_code:
+                            lang = s.language or "text"
+                            lines.append("**Improved code:**")
+                            lines.append(f"```{lang}")
+                            lines.append(s.improved_code.strip())
+                            lines.append("```")
+
+                        lines.append("</details>\n")
+
+                    lines.append("---\n")
+
+        else:
+            lines.append("\n✅ **No issues found!** The code looks good.\n")
+
+        lines.append(self.format_footer())
+        if current_sha:
+            lines.append(f"\n<!-- kimi-review:sha={current_sha[:12]} -->")
+        return "\n".join(lines)
 
     def _format_inline_summary(
         self,
