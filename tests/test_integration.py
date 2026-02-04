@@ -136,8 +136,8 @@ suggestions:
             mock_run.return_value = Mock(returncode=0)
             result = reviewer.run("owner/repo", 42)
 
-        # Result could be empty (inline posted) or summary (fallback)
-        assert result == "" or "Pull request overview" in result
+        # Now returns Markdown directly, not YAML
+        assert "Pull request overview" in result or "Kimi" in result
 
     def test_review_handles_empty_diff(self, mock_action_config):
         """Test reviewer handles empty diff gracefully."""

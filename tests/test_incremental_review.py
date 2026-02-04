@@ -96,7 +96,7 @@ class TestIncrementalReviewMessage:
     def test_no_changes_message(self, reviewer):
         """Test that appropriate message is shown when no new changes."""
         # Mock incremental diff returning None
-        reviewer._get_incremental_diff = Mock(return_value=(None, [], [], "abc123"))
+        reviewer._get_incremental_diff = Mock(return_value=(None, "abc123"))
         reviewer._should_use_incremental_review = Mock(return_value=True)
 
         pr_mock = Mock()

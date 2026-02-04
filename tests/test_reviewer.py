@@ -207,11 +207,11 @@ class TestReviewerIncrementalDiff:
         github = MockGitHubClient()
         reviewer = Reviewer(github)
 
-        compressed, included, excluded, last_sha = reviewer._get_incremental_diff(
+        diff, last_sha = reviewer._get_incremental_diff(
             "owner/repo", 123
         )
 
-        assert compressed != ""
+        assert diff is None
         assert last_sha is None
 
     def test_get_incremental_diff_no_new_commits(self, mock_action_config):
@@ -223,9 +223,9 @@ class TestReviewerIncrementalDiff:
         github.get_commits_since = Mock(return_value=[])
         reviewer = Reviewer(github)
 
-        compressed, included, excluded, last_sha = reviewer._get_incremental_diff(
+        diff, last_sha = reviewer._get_incremental_diff(
             "owner/repo", 123
         )
 
-        assert compressed is None
+        assert diff is None
         assert last_sha == "abc123"
