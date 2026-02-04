@@ -78,6 +78,9 @@ class Reviewer(BaseTool):
         if not response.strip():
             response = "### 🌗 Pull request overview\n\n✅ No issues found! The code looks good."
         
+        # Store the original response for the copy section
+        original_response = response
+        
         # Add footer if not already present
         if self.format_footer() not in response:
             response = f"{response}\n\n{self.format_footer()}"
@@ -94,7 +97,7 @@ class Reviewer(BaseTool):
 <summary>📋 Copy Full Report</summary>
 
 ```markdown
-{response}
+{original_response}
 ```
 
 </details>"""
