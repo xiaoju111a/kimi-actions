@@ -66,9 +66,11 @@ class Reviewer(BaseTool):
         system_prompt = self._build_system_prompt(skill)
 
         with tempfile.TemporaryDirectory() as work_dir:
+            logger.info(f"Cloning repository {repo_name} (branch: {pr.head.ref}) to {work_dir}")
             if not self.clone_repo(repo_name, work_dir, branch=pr.head.ref):
                 return f"### 🌗 Pull request overview\n\n❌ Failed to clone repository\n\n{self.format_footer()}"
-
+            
+            logger.info(f"Repository cloned successfully, starting agent review")
             try:
                 # Run agent review - it will return Markdown directly
                 response = asyncio.run(

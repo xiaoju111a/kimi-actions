@@ -67,6 +67,8 @@ Perform a comprehensive code review with the following focus areas:
 
 Your FIRST line must be: `## 🌗 Pull Request Overview`
 
+**YOU MUST INCLUDE THE FILE SUMMARY TABLE** - This is REQUIRED, not optional!
+
 Provide your review in Markdown format with **EXACTLY** this structure:
 
 ```markdown
