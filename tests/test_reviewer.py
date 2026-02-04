@@ -168,34 +168,19 @@ Kimi performed full review on 1 changed files and found 0 issues.
 
 
 class TestReviewerIncrementalDiff:
-    """Test incremental diff functionality."""
+    """Test incremental diff functionality - DEPRECATED."""
 
-    def test_get_incremental_diff_no_last_review(self, mock_action_config):
-        """Test incremental diff when no last review exists."""
+    def test_no_changes_message(self, mock_action_config):
+        """Test that no changes message is returned when SHA matches."""
         from tools.reviewer import Reviewer
 
         github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        diff, last_sha = reviewer._get_incremental_diff(
-            "owner/repo", 123
-        )
-
-        assert diff is None
-        assert last_sha is None
-
-    def test_get_incremental_diff_no_new_commits(self, mock_action_config):
-        """Test incremental diff with no new commits."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
+        # Mock last review with same SHA as current PR
         github.get_last_bot_comment = Mock(return_value={"sha": "abc123"})
-        github.get_commits_since = Mock(return_value=[])
+        
         reviewer = Reviewer(github)
+        reviewer.load_context = Mock()
 
-        diff, last_sha = reviewer._get_incremental_diff(
-            "owner/repo", 123
-        )
+        result = reviewer.run("owner/repo", 123)
 
-        assert diff is None
-        assert last_sha == "abc123"
+        assert "No new changes since last review" in result

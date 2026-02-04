@@ -1,13 +1,11 @@
 """Code review tool for Kimi Actions.
 
 Uses Agent SDK with Skill-based architecture.
-Supports incremental review.
 """
 
 import asyncio
 import logging
 import tempfile
-from typing import Tuple, Optional
 
 from tools.base import BaseTool
 
@@ -34,17 +32,15 @@ class Reviewer(BaseTool):
         pr = self.github.get_pr(repo_name, pr_number)
         self.load_context(repo_name, ref=pr.head.sha)
 
-        # Auto-detect if incremental review should be used
-        incremental = self._should_use_incremental_review(repo_name, pr_number)
-
-        if incremental:
-            diff, last_sha = self._get_incremental_diff(repo_name, pr_number)
-            if diff is None:
+        # Check if there are new changes since last review
+        last_review = self.github.get_last_bot_comment(repo_name, pr_number)
+        if last_review:
+            last_sha = last_review.get("sha")
+            if last_sha == pr.head.sha:
                 return "✅ No new changes since last review."
-        else:
-            # Get full diff - Agent SDK handles everything
-            diff = self.github.get_pr_diff(repo_name, pr_number)
-            last_sha = None
+
+        # Get full diff - Agent SDK handles everything
+        diff = self.github.get_pr_diff(repo_name, pr_number)
 
         if not diff:
             return "No changes to review."
@@ -70,7 +66,6 @@ class Reviewer(BaseTool):
                         pr_title=pr.title,
                         pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
                         diff=diff,
-                        incremental=incremental,
                         current_sha=pr.head.sha,
                         command_quote=command_quote,
                     )
@@ -87,8 +82,8 @@ class Reviewer(BaseTool):
         if self.format_footer() not in response:
             response = f"{response}\n\n{self.format_footer()}"
         
-        # Add SHA marker for incremental review
-        if last_sha and pr.head.sha:
+        # Add SHA marker to track last reviewed commit
+        if pr.head.sha:
             response = f"{response}\n\n<!-- kimi-review:sha={pr.head.sha[:12]} -->"
         
         return response
@@ -100,7 +95,6 @@ class Reviewer(BaseTool):
         pr_title: str,
         pr_branch: str,
         diff: str,
-        incremental: bool,
         current_sha: str,
         command_quote: str = "",
     ) -> str:
@@ -114,15 +108,12 @@ class Reviewer(BaseTool):
         api_key = self.setup_agent_env()
         if not api_key:
             return "### 🌗 Pull request overview\n\n❌ KIMI_API_KEY is required"
-
-        review_type = "incremental review" if incremental else "full review"
         
         review_prompt = f"""{system_prompt}
 
 ## PR Information
 - **Title**: {pr_title}
 - **Branch**: {pr_branch}
-- **Review Type**: {review_type}
 
 ## Code Changes
 ```diff
@@ -137,7 +128,7 @@ Review the code changes above and provide feedback in Markdown format.
 1. Start IMMEDIATELY with `## 🌗 Pull Request Overview` - NO thinking or commentary
 2. Include the file summary table with ALL files from the diff
 3. Provide a SPECIFIC description for EVERY file - never write "Modified (not shown in diff)"
-4. Use this exact text: "Kimi performed {review_type} on X changed files and found Y issues."
+4. Use this exact text: "Kimi performed full review on X changed files and found Y issues."
 5. For each issue, provide specific line numbers and code examples
 6. Put code fixes in collapsible `<details>` sections
 
@@ -172,75 +163,6 @@ Follow the format shown in the instructions above.
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
             return f"### 🌗 Pull request overview\n\n❌ Error: {str(e)}"
-
-    def _get_incremental_diff(
-        self, repo_name: str, pr_number: int
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Get diff only for new commits since last review.
-        
-        Returns:
-            Tuple of (diff, last_sha) or (None, last_sha) if no new commits
-        """
-        last_review = self.github.get_last_bot_comment(repo_name, pr_number)
-        if not last_review:
-            # No previous review
-            return None, None
-
-        last_sha = last_review["sha"]
-        new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
-        if not new_commits:
-            return None, last_sha
-
-        commit_shas = [c.sha for c in new_commits]
-        diff = self.github.get_diff_for_commits(repo_name, commit_shas)
-        
-        logger.info(f"Incremental diff: {len(new_commits)} new commits")
-        
-        return diff, last_sha
-
-    def _should_use_incremental_review(self, repo_name: str, pr_number: int) -> bool:
-        """Determine if incremental review should be used.
-
-        Incremental review is used when:
-        1. There's a previous bot review comment
-        2. The previous review was recent (within 7 days)
-        3. There are new commits since the last review
-
-        Returns:
-            True if incremental review should be used, False otherwise
-        """
-        try:
-            last_review = self.github.get_last_bot_comment(repo_name, pr_number)
-            if not last_review:
-                logger.info("No previous review found, using full review")
-                return False
-
-            # Check if review is recent (within 7 days)
-            from datetime import datetime, timedelta
-
-            review_age = datetime.now() - last_review["created_at"].replace(tzinfo=None)
-            if review_age > timedelta(days=7):
-                logger.info(
-                    f"Previous review is {review_age.days} days old, using full review"
-                )
-                return False
-
-            # Check if there are new commits
-            last_sha = last_review["sha"]
-            new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
-
-            if not new_commits:
-                logger.info("No new commits since last review")
-                return True  # Will return "no changes" message
-
-            logger.info(
-                f"Found {len(new_commits)} new commits since last review, using incremental review"
-            )
-            return True
-
-        except Exception as e:
-            logger.warning(f"Failed to determine incremental review status: {e}")
-            return False
 
     def _build_system_prompt(self, skill) -> str:
         """Build system prompt from skill and context.

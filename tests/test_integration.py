@@ -64,6 +64,10 @@ new file mode 100644
 +        return None
 """
 
+    def get_last_bot_comment(self, repo_name: str, pr_number: int):
+        """Mock get_last_bot_comment - returns None (no previous review)."""
+        return None
+
     def post_comment(self, repo_name: str, pr_number: int, body: str):
         self.posted_comments.append(body)
 
