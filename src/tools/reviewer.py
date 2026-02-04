@@ -100,7 +100,7 @@ class Reviewer(BaseTool):
             )
         )
         filtered, discarded = suggestion_service.process_suggestions(
-            suggestions, review_options, compressed_diff
+            suggestions, review_options, compressed_diff, strict_diff_validation=False
         )
         logger.info(f"Suggestions: {len(suggestions)} parsed, {len(filtered)} filtered")
 

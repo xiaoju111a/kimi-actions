@@ -19,16 +19,24 @@ class SuggestionService:
         self.control = control or SuggestionControl()
 
     def process_suggestions(
-        self, suggestions: List[CodeSuggestion], options: ReviewOptions, patch: str = ""
+        self, suggestions: List[CodeSuggestion], options: ReviewOptions, patch: str = "", strict_diff_validation: bool = True
     ) -> Tuple[List[CodeSuggestion], List[CodeSuggestion]]:
-        """Process suggestions: filter, dedupe, prioritize, limit."""
+        """Process suggestions: filter, dedupe, prioritize, limit.
+        
+        Args:
+            suggestions: List of code suggestions to process
+            options: Review options (bug, performance, security)
+            patch: Diff patch string
+            strict_diff_validation: If True, only keep suggestions for files in diff.
+                                   If False, allow suggestions for related files not in diff.
+        """
 
         # 1. Filter by category
         filtered = self._filter_by_category(suggestions, options)
 
         # 2. Validate against diff
         if patch:
-            filtered = self._validate_against_diff(filtered, patch)
+            filtered = self._validate_against_diff(filtered, patch, strict=strict_diff_validation)
 
         # 3. Remove duplicates
         filtered = self._remove_duplicates(filtered)
@@ -66,9 +74,16 @@ class SuggestionService:
         return [s for s in suggestions if category_map.get(s.label.lower(), True)]
 
     def _validate_against_diff(
-        self, suggestions: List[CodeSuggestion], patch: str
+        self, suggestions: List[CodeSuggestion], patch: str, strict: bool = True
     ) -> List[CodeSuggestion]:
-        """Keep only suggestions whose file AND line numbers are in the diff (strict validation)."""
+        """Keep only suggestions whose file AND line numbers are in the diff.
+        
+        Args:
+            suggestions: List of suggestions to validate
+            patch: Diff patch string
+            strict: If True, discard suggestions for files not in diff.
+                   If False, keep them but mark as "related file" suggestions.
+        """
         import logging
         import re
 
@@ -141,10 +156,18 @@ class SuggestionService:
                         break
 
             if not matched_file:
-                logger.warning(
-                    f"File {s.relevant_file} NOT in diff files {diff_files}, discarding"
-                )
-                continue
+                if strict:
+                    logger.warning(
+                        f"File {s.relevant_file} NOT in diff files {diff_files}, discarding (strict mode)"
+                    )
+                    continue
+                else:
+                    # In non-strict mode, keep suggestions for related files
+                    logger.info(
+                        f"File {s.relevant_file} NOT in diff files {diff_files}, keeping as related file suggestion"
+                    )
+                    valid.append(s)
+                    continue
 
             # Check if line numbers are in the diff
             if matched_file in file_line_map:
