@@ -78,9 +78,6 @@ class Reviewer(BaseTool):
         if not response.strip():
             response = "### 🌗 Pull request overview\n\n✅ No issues found! The code looks good."
         
-        # Store the original response for the copy section
-        original_response = response
-        
         # Add footer if not already present
         if self.format_footer() not in response:
             response = f"{response}\n\n{self.format_footer()}"
@@ -88,19 +85,6 @@ class Reviewer(BaseTool):
         # Add SHA marker to track last reviewed commit
         if pr.head.sha:
             response = f"{response}\n\n<!-- kimi-review:sha={pr.head.sha[:12]} -->"
-        
-        # Add a collapsible section with the full report for easy copying
-        # GitHub automatically adds copy buttons to code blocks
-        response = f"""{response}
-
-<details>
-<summary>📋 Copy Full Report</summary>
-
-```markdown
-{original_response}
-```
-
-</details>"""
         
         return response
 

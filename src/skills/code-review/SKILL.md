@@ -71,8 +71,7 @@ Kimi performed {review_type} on {total_files} changed files and found X issues.
 
 The JWT secret is hardcoded. An attacker can forge tokens and bypass authentication.
 
-<details>
-<summary>💡 Suggested fix</summary>
+**💡 Suggested fix:**
 
 **Current code:**
 ```python
@@ -83,8 +82,6 @@ token = jwt.encode({"user_id": user_id}, "secret")
 ```python
 token = jwt.encode({"user_id": user_id}, os.environ["JWT_SECRET"])
 ```
-
-</details>
 
 ---
 
@@ -102,7 +99,7 @@ token = jwt.encode({"user_id": user_id}, os.environ["JWT_SECRET"])
 - Include file summary table with ALL files (including deleted ones)
 - Provide specific description for EVERY file - never skip or write "Modified (not shown in diff)"
 - Use severity icons: 🔴 CRITICAL, 🟠 HIGH, 🟡 MEDIUM, 🔵 LOW
-- Put code fixes in collapsible `<details>` sections
+- Show code fixes directly with "💡 Suggested fix:" - do NOT use `<details>` collapse
 - Separate issues with `---`
 
 ## Special Cases
