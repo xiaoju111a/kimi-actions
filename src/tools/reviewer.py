@@ -70,58 +70,37 @@ class Reviewer(BaseTool):
                 return f"### 🌗 Pull request overview\n\n❌ Failed to clone repository\n\n{self.format_footer()}"
 
             try:
-                # Run file summary generation and main review in parallel
-                response, file_summaries = asyncio.run(
-                    self._run_parallel_review(
+                # Run agent review - it will return Markdown directly
+                response = asyncio.run(
+                    self._run_agent_review(
                         work_dir=work_dir,
                         system_prompt=system_prompt,
                         pr_title=pr.title,
                         pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
                         diff=compressed_diff,
                         included_chunks=included_chunks,
+                        incremental=incremental,
+                        current_sha=pr.head.sha,
+                        command_quote=command_quote,
                     )
                 )
             except Exception as e:
                 logger.error(f"Review failed: {e}")
                 return f"### 🌗 Pull request overview\n\n❌ {str(e)}\n\n{self.format_footer()}"
 
-        suggestions = self._parse_suggestions(response)
-        review_options = ReviewOptions(
-            bug=self.repo_config.enable_bug if self.repo_config else True,
-            performance=self.repo_config.enable_performance
-            if self.repo_config
-            else True,
-            security=self.repo_config.enable_security if self.repo_config else True,
-        )
-        suggestion_service = SuggestionService(
-            SuggestionControl(
-                max_suggestions=self.config.review.num_max_findings,
-                severity_level_filter=SeverityLevel.LOW,
-            )
-        )
-        filtered, discarded = suggestion_service.process_suggestions(
-            suggestions, review_options, compressed_diff, strict_diff_validation=False
-        )
-        logger.info(f"Suggestions: {len(suggestions)} parsed, {len(filtered)} filtered")
-
-        total_files = (
-            len(included_chunks)
-            if included_chunks
-            else len(set(s.relevant_file for s in filtered if s.relevant_file))
-        )
-
-        # Format as Markdown comment (no inline comments)
-        summary = self._format_markdown_review(
-            response,
-            filtered,
-            total_files=total_files,
-            included_chunks=included_chunks,
-            incremental=incremental,
-            current_sha=pr.head.sha,
-            command_quote=command_quote,
-            file_summaries=file_summaries,
-        )
-        return summary
+        # Add footer and return the Markdown response directly
+        if not response.strip():
+            response = "### 🌗 Pull request overview\n\n✅ No issues found! The code looks good."
+        
+        # Add footer if not already present
+        if self.format_footer() not in response:
+            response = f"{response}\n\n{self.format_footer()}"
+        
+        # Add SHA marker for incremental review
+        if incremental and pr.head.sha:
+            response = f"{response}\n\n<!-- kimi-review:sha={pr.head.sha[:12]} -->"
+        
+        return response
 
     async def _run_parallel_review(
         self,
@@ -164,89 +143,65 @@ class Reviewer(BaseTool):
         pr_title: str,
         pr_branch: str,
         diff: str,
+        included_chunks: List[DiffChunk],
+        incremental: bool,
+        current_sha: str,
+        command_quote: str = "",
     ) -> str:
-        """Run agent to perform code review."""
+        """Run agent to perform code review and return Markdown directly."""
         try:
             from kimi_agent_sdk import Session, ApprovalRequest, TextPart
             from kaos.path import KaosPath
         except ImportError:
-            return (
-                '```yaml\nsuggestions: []\nsummary: "kimi-agent-sdk not installed"\n```'
-            )
+            return "### 🌗 Pull request overview\n\n❌ kimi-agent-sdk not installed"
 
         api_key = self.setup_agent_env()
         if not api_key:
-            return '```yaml\nsuggestions: []\nsummary: "KIMI_API_KEY is required"\n```'
+            return "### 🌗 Pull request overview\n\n❌ KIMI_API_KEY is required"
 
-        text_parts = []
+        # Build file list for context
+        file_list = []
+        for chunk in included_chunks[:20]:  # Limit to first 20 files
+            change_type = chunk.change_type or "modified"
+            file_list.append(f"- `{chunk.filename}` ({change_type})")
+
+        review_type = "incremental review" if incremental else "full review"
+        
         review_prompt = f"""{system_prompt}
 
 ## PR Information
 Title: {pr_title}
 Branch: {pr_branch}
+Review Type: {review_type}
+Files Changed: {len(included_chunks)}
+
+{chr(10).join(file_list) if file_list else "No files listed"}
 
 ## Code Changes
 ```diff
 {diff[:DIFF_LIMIT_REVIEW]}
 ```
 
-## Important: Minimize Tool Usage
-
-The diff above shows the complete changes. **Only use tools when absolutely necessary.**
-
-Most reviews can be completed by analyzing the diff alone. Only read additional files if:
-- The diff references undefined functions/classes
-- You need to verify API contracts
-- Security context is missing
-
-**Goal: Complete review in 5-10 tool calls maximum.**
-
 ## Your Task
 
-1. **Analyze the diff first** - Most issues are visible in the diff itself
-2. **Find real issues** - Focus on bugs, security problems, and performance issues  
-3. **Be specific and certain** - Only flag issues you're confident about
-4. **Provide working fixes** - Include concrete code examples
+Analyze the code changes and provide a comprehensive review in Markdown format.
 
-**Efficiency target**: Aim to complete in 20-30 steps total.
+Follow the output format specified in the instructions above. Include:
+1. A brief overview of what the PR does
+2. A summary table of changed files
+3. Detailed findings organized by file (if any issues found)
+4. Use severity icons (🔴 🟠 🟡 🔵) and proper Markdown formatting
 
-## Output Format
-
-Respond with ONLY a YAML code block (no text before or after):
-
-```yaml
-summary: "Brief 1-2 sentence summary of what this PR does"
-score: 85
-file_summaries:
-  - file: "path/to/file.py"
-    description: "Specific description (e.g., 'Added JWT authentication with token expiration')"
-suggestions:
-  - relevant_file: "path/to/file.py"
-    language: "python"
-    relevant_lines_start: 42
-    relevant_lines_end: 45
-    severity: "high"
-    label: "bug"
-    one_sentence_summary: "Specific issue description"
-    suggestion_content: |
-      Explain why it's wrong, what scenario triggers it, and the impact.
-    existing_code: |
-      actual problematic code from the diff
-    improved_code: |
-      working fix with proper error handling
-```
-
-**Quality Requirements:**
-- Every suggestion MUST have specific line numbers
-- Every suggestion MUST have both `existing_code` and `improved_code`
-- NO uncertain language ("might", "probably", "appears to", "likely")
-- NO vague suggestions without concrete fixes
-- Only flag NEW code (lines with `+` in the diff)
-
-**If no issues found:** Use `suggestions: []` but still provide summary and file_summaries.
+Remember:
+- Only review NEW code (lines with `+` in the diff)
+- Be specific with line numbers and code examples
+- Provide working fixes in collapsible sections
+- If no issues found, say so clearly
+- Use tools sparingly (10-15 calls max)
 """
 
         try:
+            text_parts = []
             skills_path = self.get_skills_dir()
 
             # Convert work_dir string to KaosPath for Agent SDK
@@ -257,7 +212,7 @@ suggestions:
                 work_dir=work_dir_kaos,
                 model=self.AGENT_MODEL,
                 yolo=True,
-                max_steps_per_turn=50,  # Allow sufficient steps for thorough review
+                max_steps_per_turn=50,
                 skills_dir=skills_dir_kaos,
             ) as session:
                 async for msg in session.prompt(review_prompt):
@@ -268,10 +223,11 @@ suggestions:
 
             if skills_path:
                 logger.info(f"Review used skills from: {skills_path}")
+            
             return "".join(text_parts)
         except Exception as e:
             logger.error(f"Agent execution failed: {e}")
-            return f'```yaml\nsuggestions: []\nsummary: "Error: {str(e)}"\n```'
+            return f"### 🌗 Pull request overview\n\n❌ Error: {str(e)}"
 
     def _get_incremental_diff(
         self, repo_name: str, pr_number: int
