@@ -86,6 +86,19 @@ class Reviewer(BaseTool):
         if pr.head.sha:
             response = f"{response}\n\n<!-- kimi-review:sha={pr.head.sha[:12]} -->"
         
+        # Add a collapsible section with the full report for easy copying
+        # GitHub automatically adds copy buttons to code blocks
+        response = f"""{response}
+
+<details>
+<summary>📋 Copy Full Report</summary>
+
+```markdown
+{response}
+```
+
+</details>"""
+        
         return response
 
     async def _run_agent_review(
