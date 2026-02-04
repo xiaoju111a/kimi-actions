@@ -170,9 +170,10 @@ Review the code changes above and provide feedback in Markdown format.
 **CRITICAL REQUIREMENTS**:
 1. Start IMMEDIATELY with `## 🌗 Pull Request Overview` - NO thinking or commentary
 2. Include the file summary table with ALL files from the diff
-3. Use this exact text: "Kimi performed {review_type} on X changed files and found Y issues."
-4. For each issue, provide specific line numbers and code examples
-5. Put code fixes in collapsible `<details>` sections
+3. Provide a SPECIFIC description for EVERY file - never write "Modified (not shown in diff)"
+4. Use this exact text: "Kimi performed {review_type} on X changed files and found Y issues."
+5. For each issue, provide specific line numbers and code examples
+6. Put code fixes in collapsible `<details>` sections
 
 Follow the format shown in the instructions above.
 """
