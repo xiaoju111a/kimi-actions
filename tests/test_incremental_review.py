@@ -96,7 +96,7 @@ class TestIncrementalReviewMessage:
     def test_no_changes_message(self, reviewer):
         """Test that appropriate message is shown when no new changes."""
         # Mock incremental diff returning None
-        reviewer._get_incremental_diff = Mock(return_value=(None, [], [], "abc123"))
+        reviewer._get_incremental_diff = Mock(return_value=(None, "abc123"))
         reviewer._should_use_incremental_review = Mock(return_value=True)
 
         pr_mock = Mock()
@@ -110,57 +110,3 @@ class TestIncrementalReviewMessage:
 
         assert "No new changes since last review" in result
         assert "✅" in result
-
-    def test_incremental_indicator_in_summary(self, reviewer):
-        """Test that summary indicates incremental review."""
-        from diff_chunker import DiffChunk
-
-        suggestions = []
-        chunks = [
-            DiffChunk(
-                filename="test.py",
-                content="",
-                tokens=100,
-                language="python",
-                change_type="modified",
-            )
-        ]
-
-        summary = reviewer._format_inline_summary(
-            response='```yaml\nsummary: "Test"\nscore: 85\nfile_summaries: []\nsuggestions: []\n```',
-            suggestions=suggestions,
-            inline_count=0,
-            total_files=1,
-            included_chunks=chunks,
-            incremental=True,
-            current_sha="abc123",
-        )
-
-        assert "incremental review" in summary.lower()
-
-    def test_full_review_indicator_in_summary(self, reviewer):
-        """Test that summary indicates full review."""
-        from diff_chunker import DiffChunk
-
-        suggestions = []
-        chunks = [
-            DiffChunk(
-                filename="test.py",
-                content="",
-                tokens=100,
-                language="python",
-                change_type="modified",
-            )
-        ]
-
-        summary = reviewer._format_inline_summary(
-            response='```yaml\nsummary: "Test"\nscore: 85\nfile_summaries: []\nsuggestions: []\n```',
-            suggestions=suggestions,
-            inline_count=0,
-            total_files=1,
-            included_chunks=chunks,
-            incremental=False,
-            current_sha="abc123",
-        )
-
-        assert "full review" in summary.lower()

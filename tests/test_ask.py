@@ -187,10 +187,10 @@ class TestAskErrorHandling:
         from tools.ask import Ask
 
         mock_github.get_pr.return_value = mock_pr
+        mock_github.get_pr_diff.return_value = ""  # Empty diff
 
         ask = Ask(github=mock_github)
         ask.load_context = Mock()
-        ask.get_diff = Mock(return_value=("", {}, []))
 
         result = ask.run("owner/repo", 123, question="What does this do?")
 

@@ -136,8 +136,8 @@ suggestions:
             mock_run.return_value = Mock(returncode=0)
             result = reviewer.run("owner/repo", 42)
 
-        # Result could be empty (inline posted) or summary (fallback)
-        assert result == "" or "Pull request overview" in result
+        # Now returns Markdown directly, not YAML
+        assert "Pull request overview" in result or "Kimi" in result
 
     def test_review_handles_empty_diff(self, mock_action_config):
         """Test reviewer handles empty diff gracefully."""
@@ -156,82 +156,6 @@ suggestions:
         result = reviewer.run("owner/repo", 42)
 
         assert "No changes" in result
-
-
-class TestDescribeIntegration:
-    """Integration tests for Describe tool."""
-
-    def test_describe_generates_title_and_body(self, mock_action_config):
-        """Test that describe generates title and body."""
-        from tools.describe import Describe
-
-        github = MockGitHubClient()
-
-        describe = Describe(github)
-        describe.load_context = Mock()
-        describe.repo_config = None
-        describe.skill_manager = Mock()
-        describe.skill_manager.get_skill = Mock(
-            return_value=Mock(instructions="Generate PR description")
-        )
-
-        # Mock asyncio.run to skip agent calls
-        mock_agent_response = """```yaml
-title: "feat(auth): add JWT authentication"
-type: feature
-description: This PR implements JWT-based authentication.
-labels:
-  - enhancement
-  - security
-files:
-  - filename: src/auth.py
-    change_type: added
-    summary: JWT authentication module
-```"""
-        with patch("asyncio.run", return_value=mock_agent_response):
-            title, body = describe.run("owner/repo", 42, update_pr=False)
-
-        assert "auth" in title.lower() or "jwt" in title.lower()
-        assert "authentication" in body.lower() or "JWT" in body
-
-
-class TestImproveIntegration:
-    """Integration tests for Improve tool."""
-
-    def test_improve_generates_suggestions(self, mock_action_config):
-        """Test that improve generates suggestions."""
-        from tools.improve import Improve
-
-        github = MockGitHubClient()
-
-        improve = Improve(github)
-        improve.load_context = Mock()
-        improve.repo_config = None
-        improve.skill_manager = Mock()
-        improve.skill_manager.get_skill = Mock(
-            return_value=Mock(instructions="Provide improvements")
-        )
-
-        # Mock subprocess and asyncio.run to skip git clone and agent calls
-        mock_agent_response = """```yaml
-suggestions:
-  - relevant_file: src/auth.py
-    one_sentence_summary: Use environment variable for secret
-    suggestion_content: Move secret to environment variable for security.
-    existing_code: '"secret"'
-    improved_code: 'os.environ["JWT_SECRET"]'
-    language: python
-    severity: high
-```"""
-        with (
-            patch("subprocess.run") as mock_run,
-            patch("asyncio.run", return_value=mock_agent_response),
-        ):
-            mock_run.return_value = Mock(returncode=0)
-            result = improve.run("owner/repo", 42)
-
-        assert "Kimi Code Suggestions" in result
-        assert "Suggestion" in result
 
 
 class TestAskIntegration:

@@ -5,85 +5,73 @@
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────┐
-│                                  GitHub                                       │
-│ ┌────────────────────────────────────────┐  ┌───────────────────────────────┐ │
-│ │           Pull Request Events          │  │         Issue Events          │ │
-│ │ ┌─────────┐ ┌──────────┐ ┌───────────┐ │  │ ┌───────────┐ ┌─────────────┐ │ │
-│ │ │   PR    │ │PR Comment│ │  Inline   │ │  │ │  Issue    │ │Issue Comment│ │ │
-│ │ │ Events  │ │ /review  │ │  Comment  │ │  │ │  Events   │ │  /triage    │ │ │
-│ │ └────┬────┘ └────┬─────┘ └─────┬─────┘ │  │ └─────┬─────┘ └──────┬──────┘ │ │
-│ └──────┼───────────┼─────────────┼───────┘  └───────┼──────────────┼────────┘ │
-└────────┼───────────┼─────────────┼──────────────────┼──────────────┼──────────┘
-         │           │             │                  │              │
-         ▼           ▼             ▼                  ▼              ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         GitHub Actions Workflow (Docker)                     │
-├──────────────────────────────────────────────────────────────────────────────┤
-│  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │                          main.py (Entry Point)                         │  │
-│  │ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────────────────┐ │  │
-│  │ │handle_pr_    │ │handle_comment│ │handle_review_│ │handle_issue_    │ │  │
-│  │ │event()       │ │_event()      │ │comment_event │ │event/comment()  │ │  │
-│  │ └──────────────┘ └──────────────┘ └──────────────┘ └─────────────────┘ │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-│                                      │                                       │
-│                                      ▼                                       │
-│  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │                            Tools Layer                                 │  │
-│  │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────────┐  │  │
-│  │ │Reviewer│ │Describe│ │Improve │ │  Ask   │ │ Labels │ │  Triage    │  │  │
-│  │ │ /review│ │/describe│ │/improve││  /ask  │ │/labels │ │  /triage   │  │  │
-│  │ └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └──────┬─────┘  │  │
-│  │     └──────────┴──────────┴──────────┴──────────┴─────────────┘        │  │
-│  │                                 │                                      │  │
-│  │                                 ▼                                      │  │
-│  │  ┌──────────────────────────────────────────────────────────────────┐  │  │
-│  │  │                          BaseTool                                │  │  │
-│  │  │   • clone_repo()    • run_agent()       • format_footer()        │  │  │
-│  │  │   • get_diff()      • get_skill()       • post_inline_comments() │  │  │
-│  │  │   • load_context()  • get_skills_dir()  • parse_yaml_response()  │  │  │
-│  │  └──────────────────────────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-│                                      │                                       │
-│           ┌──────────────────────────┼──────────────────────────┐            │
-│           ▼                          ▼                          ▼            │
-│   ┌──────────────┐         ┌──────────────┐          ┌──────────────────┐    │
-│   │ SkillManager │         │ DiffChunker  │          │SuggestionService │    │
-│   │  (SKILL.md)  │         │  (Large PRs) │          │(Post-processing) │    │
-│   │ • Load skills│         │ • Prioritize │          │ • Filter/dedupe  │    │
-│   │ • Set skills_│         │ • Chunk diff │          │ • Validate       │    │
-│   │   dir for SDK│         │ • Exclude    │          │ • Score/sort     │    │
-│   └──────────────┘         └──────────────┘          └──────────────────┘    │
-│                                      │                                       │
-│           ┌──────────────────────────┴──────────────────────────┐            │
-│           ▼                                                     ▼            │
-│   ┌──────────────────────────────────────────┐        ┌──────────────┐       │
-│   │         Kimi Agent SDK                   │        │  GitHub API  │       │
-│   │         (kimi-k2-thinking-turbo)         │        │    (REST)    │       │
-│   │                                          │        │              │       │
-│   │  • Automatic token management            │        │              │       │
-│   │  • Automatic script execution            │        │              │       │
-│   │  • Context window management             │        │              │       │
-│   │  • Built-in tools (read/write/bash)      │        │              │       │
-│   │  • Skills directory integration          │        │              │       │
-│   └──────────────────────────────────────────┘        └──────────────┘       │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                              GitHub                                 │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  PR Events  │  PR Comments  │  Inline Comments               │   │
+│  │             │  /review      │  /ask                          │   │
+│  │             │  /ask         │                                │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────┬───────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    GitHub Actions (Docker)                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                      main.py                                  │ │
+│  │  Event Router: PR events → /review, /ask commands            │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                              │                                     │
+│                              ▼                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                    Tools Layer                                │ │
+│  │                                                               │ │
+│  │  ┌──────────┐              ┌──────────┐                      │ │
+│  │  │ Reviewer │              │   Ask    │                      │ │
+│  │  │ /review  │              │  /ask    │                      │ │
+│  │  └────┬─────┘              └────┬─────┘                      │ │
+│  │       └──────────┬──────────────┘                            │ │
+│  │                  ▼                                            │ │
+│  │         ┌────────────────┐                                   │ │
+│  │         │    BaseTool    │                                   │ │
+│  │         │  • clone_repo  │                                   │ │
+│  │         │  • run_agent   │                                   │ │
+│  │         │  • get_skill   │                                   │ │
+│  │         └────────────────┘                                   │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                              │                                     │
+│                              ▼                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                   SkillManager                                │ │
+│  │  Load SKILL.md and set skills_dir for Agent SDK              │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                              │                                     │
+│         ┌────────────────────┴────────────────────┐               │
+│         ▼                                         ▼               │
+│  ┌──────────────────┐                   ┌──────────────────┐     │
+│  │  Kimi Agent SDK  │                   │   GitHub API     │     │
+│  │   (kimi-k2.5)    │                   │     (REST)       │     │
+│  │                  │                   │                  │     │
+│  │ • Auto token mgmt│                   │ • Get PR diff    │     │
+│  │ • Script exec    │                   │ • Post comments  │     │
+│  │ • Context mgmt   │                   │ • Get PR info    │     │
+│  │ • Markdown output│                   │                  │     │
+│  └──────────────────┘                   └──────────────────┘     │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
-- 🔍 `/review` - Intelligent code review for bugs, security issues, and performance problems
-- 📝 `/describe` - Auto-generate PR title and description
-- ✨ `/improve` - Code improvement suggestions with concrete fixes
-- 💬 `/ask` - Interactive Q&A about the PR
-- 🏷️ `/labels` - Auto-generate and apply PR labels based on content
-- 🎯 `/triage` - Auto-classify issues (bug/feature/question) with priority and labels
+- 🔍 `/review` - Intelligent code review with automatic incremental detection
+- 💬 `/ask` - Interactive Q&A about the PR or specific code
 - 🧠 **Agent Skills** - Modular capability extension with custom review rules
 - 🌐 Multi-language support (English/Chinese)
 - ⚙️ Configurable review strictness
-- 📦 Smart handling of large PRs (auto-chunking + model fallback)
+- 🎯 **Direct Markdown Output** - Clean, readable reviews powered by Agent SDK
+- 🚀 **Simplified Architecture** - Agent SDK handles all context and token management
 
 ## Quick Start
 
@@ -112,8 +100,6 @@ name: Kimi Code Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  issues:
-    types: [opened, reopened]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -122,11 +108,9 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 jobs:
-  # Job for PR-related events (review, describe, improve, ask, labels)
-  pr-review:
+  kimi-review:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'pull_request' ||
@@ -160,25 +144,7 @@ jobs:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Optional
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          auto_review: 'false'
-
-  # Job for Issue-related events (triage)
-  issue-triage:
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'issues' ||
-      (github.event_name == 'issue_comment' &&
-       !github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, '/'))
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: xiaoju111a/kimi-actions@main
-        with:
-          kimi_api_key: ${{ secrets.KIMI_API_KEY }}
-          kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Optional
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          auto_triage: 'false'
+          auto_review: 'false'  # Use /review command instead
 ```
 
 ## Commands
@@ -189,12 +155,8 @@ Use these commands in PR comments:
 
 | Command | Description | Usage Location |
 |---------|-------------|----------------|
-| `/review` | Smart code review with inline comments (auto-detects incremental) | PR comment area |
-| `/describe` | Auto-generate PR description | PR comment area |
-| `/describe --comment` | Generate description as comment | PR comment area |
-| `/improve` | Code improvement suggestions | PR comment area |
+| `/review` | Smart code review with automatic incremental detection | PR comment area |
 | `/ask <question>` | Q&A about the PR or specific code | PR comment area **or** Files changed tab (inline) |
-| `/labels` | Auto-generate and apply PR labels | PR comment area |
 | `/help` | Show help message | PR comment area |
 
 **🧠 Smart Incremental Review:**
@@ -211,16 +173,6 @@ No parameters needed - it intelligently adapts to your workflow! 🎯
 - **In PR comment area**: Ask general questions about the entire PR
 - **In Files changed tab**: Click the **+** button next to a line of code, then use `/ask <question>` to ask about that specific code
 
-### Issue Commands
-
-Use these commands in Issue comments:
-
-| Command | Description |
-|---------|-------------|
-| `/triage` | Auto-classify issue type and apply labels |
-| `/triage --no-apply` | Classify without applying labels |
-| `/help` | Show help message |
-
 ## Configuration
 
 ### Action Inputs
@@ -235,14 +187,11 @@ Use these commands in Issue comments:
     # Optional
     kimi_base_url: ${{ secrets.KIMI_BASE_URL }}  # Custom API endpoint (optional, defaults to https://api.moonshot.cn/v1)
     language: 'en-US'               # Response language: zh-CN, en-US
-    model: 'kimi-k2-thinking-turbo' # Kimi model (default: kimi-k2-thinking-turbo, or kimi-k2-thinking for more thorough analysis)
+    model: 'kimi-k2.5'              # Kimi model (default: kimi-k2.5)
     review_level: 'normal'          # Review strictness: strict, normal, gentle
-    max_files: '10'                 # Max files to review
+    max_files: '50'                 # Max files to review
     exclude_patterns: '*.lock,*.min.js'  # File patterns to exclude
-    auto_review: 'true'             # Auto review on PR open
-    auto_describe: 'false'          # Auto generate description on PR open
-    auto_improve: 'false'           # Auto provide suggestions on PR open
-    auto_triage: 'false'            # Auto triage issues on open
+    auto_review: 'false'            # Auto review on PR open (default: false, use /review command instead)
 ```
 
 ### Repository Config (.kimi-config.yml)
@@ -314,13 +263,13 @@ Skills are automatically triggered based on PR code content.
 
 | Model | Context | Notes |
 |-------|---------|-------|
-| `kimi-k2-thinking-turbo` | 256K | **Default**, faster thinking model, good balance |
+| `kimi-k2.5` | 256K | **Default**, latest model with best performance |
+| `kimi-k2-thinking-turbo` | 256K | Faster thinking model |
 | `kimi-k2-thinking` | 256K | More thorough reasoning, slower |
-| `kimi-k2-turbo-preview` | 256K | Fast, for simple tasks |
 
-All commands use **Kimi Agent SDK** with `kimi-k2-thinking-turbo` model by default for best speed/quality balance.
+All commands use **Kimi Agent SDK** with `kimi-k2.5` model by default.
 
-When PR is too large, the action uses intelligent chunking to prioritize important files.
+The Agent SDK automatically handles large PRs with its 256K context window.
 
 ## Review Categories
 
@@ -337,47 +286,32 @@ kimi-actions/
 ├── action.yml                  # GitHub Action definition
 ├── Dockerfile                  # Docker container config
 ├── requirements.txt            # Python dependencies
-├── tests/                      # Unit tests (235 tests)
+├── tests/                      # Unit tests (115 tests)
 └── src/
     ├── main.py                 # Entry point, event routing
     ├── action_config.py        # Action config (env vars)
     ├── repo_config.py          # Repo config (.kimi-config.yml)
     ├── github_client.py        # GitHub API client
-    ├── diff_chunker.py         # Intelligent diff chunking for large PRs
-    ├── diff_processor.py       # Diff file filtering (binary, lock files)
     ├── skill_loader.py         # Skill loading/management
-    ├── suggestion_service.py   # Suggestion post-processing
-    ├── models.py               # Data models
     ├── tools/                  # Command implementations (Agent SDK)
     │   ├── base.py             # Base class (common functionality)
     │   ├── reviewer.py         # /review - Code review
-    │   ├── describe.py         # /describe - PR description
-    │   ├── improve.py          # /improve - Code improvements
-    │   ├── ask.py              # /ask - Q&A
-    │   ├── labels.py           # /labels - Label generation
-    │   └── triage.py           # /triage - Issue classification
+    │   └── ask.py              # /ask - Q&A
     └── skills/                 # Built-in Skills
         ├── code-review/
         │   ├── SKILL.md        # Review instructions
-        │   └── scripts/        # Review scripts (called by Agent SDK)
-        ├── describe/
-        ├── improve/
-        ├── ask/
-        ├── labels/
-        └── triage/
-            └── scripts/
-                └── scan_codebase.py
+        │   └── references/     # Reference documents
+        └── ask/
+            └── SKILL.md
 ```
 
 ### Key Components
 
 | Component | Purpose | Notes |
 |-----------|---------|-------|
-| **diff_chunker.py** | Handle large PRs | Priority-based file selection, token-aware chunking |
 | **skill_loader.py** | Manage skills | Load SKILL.md, set skills_dir for Agent SDK |
-| **suggestion_service.py** | Post-process suggestions | Filter, dedupe, validate, score, sort |
-| **base.py** | Common tool functionality | Diff fetching, repo cloning, Agent SDK execution |
-| **Agent SDK** | LLM execution | Automatic token management, script execution, context handling |
+| **base.py** | Common tool functionality | Repo cloning, Agent SDK execution |
+| **Agent SDK** | LLM execution | Automatic token management, script execution, context handling, direct Markdown output |
 
 ## FAQ
 
@@ -391,12 +325,12 @@ Yes. Just ensure `GITHUB_TOKEN` has permission to read repository contents.
 
 ### Q: What if PR is too large?
 
-The action uses **intelligent diff chunking**:
-1. **Priority-based selection**: Security files and core logic prioritized over tests/docs
-2. **Token-aware chunking**: Automatically fits within Agent SDK context limits (256K tokens)
-3. **File filtering**: Excludes binary files, lock files, minified files
+The **Kimi Agent SDK** automatically handles large PRs:
+- **256K token context window**: Can handle very large PRs
+- **Automatic context management**: SDK intelligently manages what to include
+- **Smart file filtering**: Excludes binary files, lock files, minified files
 
-Agent SDK automatically manages token counting and context windows.
+No manual chunking needed - the Agent SDK handles everything automatically.
 
 ### Q: What is Agent SDK and why use it?
 
