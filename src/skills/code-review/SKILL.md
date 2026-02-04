@@ -63,7 +63,11 @@ Perform a comprehensive code review with the following focus areas:
 
 ## Output Format
 
-Provide your review in Markdown format with the following structure:
+**CRITICAL**: Start your response IMMEDIATELY with the markdown output. Do NOT include any thinking, analysis, or meta-commentary like "Now I have a complete understanding..." or "Let me provide...". 
+
+Your FIRST line must be: `## 🌗 Pull Request Overview`
+
+Provide your review in Markdown format with **EXACTLY** this structure:
 
 ```markdown
 ## 🌗 Pull Request Overview
@@ -71,7 +75,7 @@ Provide your review in Markdown format with the following structure:
 [Brief 1-2 sentence summary of what this PR does]
 
 **Reviewed Changes**
-Kimi performed full review on X changed files and found Y issues.
+Kimi performed {review_type} on {total_files} changed files and found X issues.
 
 <details>
 <summary>Show a summary per file</summary>
@@ -80,8 +84,15 @@ Kimi performed full review on X changed files and found Y issues.
 |------|-------------|
 | `path/to/file.py` | Specific description of what changed |
 | `path/to/file2.js` | Another file description |
+| `path/to/deleted.py` | File deleted |
 
 </details>
+
+**IMPORTANT**: 
+- List ALL files provided in the "Changed Files" section above
+- For deleted files, write "File deleted" in the description
+- For modified files, describe what specifically changed
+- For new files, write "New file added" plus what it does
 
 ---
 
@@ -145,17 +156,17 @@ for user in users_with_orders:
 ✅ **No issues found!** The code looks good.
 ```
 
-**Severity Icons:**
-- 🔴 CRITICAL - Must fix before merge
-- 🟠 HIGH - Should fix before merge
-- 🟡 MEDIUM - Consider fixing
-- 🔵 LOW - Nice to have
+**CRITICAL FORMAT RULES:**
 
-**Label Badges:**
-- `security` - Security vulnerability
-- `bug` - Logic error or bug
-- `performance` - Performance issue
-- `documentation` - Documentation issue
+1. **START IMMEDIATELY** with `## 🌗 Pull Request Overview` - NO thinking, analysis, or phrases like "Now I have...", "Let me...", etc.
+2. **Header MUST be `## 🌗 Pull Request Overview`** (with ##, not just text)
+3. **List ALL files** in the summary table (not just files with issues)
+4. **For deleted files**, write "File deleted" in the description column
+5. **Each file section MUST start with `### 📄 \`filename\``**
+6. **Each issue MUST start with `#### [icon] **SEVERITY** \`label\`: title`**
+7. **Code blocks MUST be inside `<details><summary>💡 Suggested fix</summary>` tags**
+8. **Use `---` to separate issues**
+9. **If no issues, show `✅ **No issues found!** The code looks good.`**
 
 ## Example Output
 
@@ -165,7 +176,7 @@ for user in users_with_orders:
 Added user authentication with JWT tokens and session management. Implemented middleware to protect API endpoints.
 
 **Reviewed Changes**
-Kimi performed full review on 2 changed files and found 2 issues.
+Kimi performed full review on 3 changed files and found 2 issues.
 
 <details>
 <summary>Show a summary per file</summary>
@@ -174,6 +185,7 @@ Kimi performed full review on 2 changed files and found 2 issues.
 |------|-------------|
 | `src/auth.py` | Implemented JWT-based authentication with token validation |
 | `src/api.py` | Added authentication middleware to protect API endpoints |
+| `src/old_auth.py` | File deleted |
 
 </details>
 

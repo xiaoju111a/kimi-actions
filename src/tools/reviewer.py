@@ -159,9 +159,9 @@ class Reviewer(BaseTool):
         if not api_key:
             return "### 🌗 Pull request overview\n\n❌ KIMI_API_KEY is required"
 
-        # Build file list for context
+        # Build complete file list for context
         file_list = []
-        for chunk in included_chunks[:20]:  # Limit to first 20 files
+        for chunk in included_chunks:  # Include ALL files
             change_type = chunk.change_type or "modified"
             file_list.append(f"- `{chunk.filename}` ({change_type})")
 
@@ -176,6 +176,7 @@ Branch: {pr_branch}
 Review Type: {review_type}
 Files Changed: {total_files}
 
+## Changed Files
 {chr(10).join(file_list) if file_list else "No files listed"}
 
 ## Code Changes
@@ -187,15 +188,17 @@ Files Changed: {total_files}
 
 Analyze the code changes and provide a comprehensive review in Markdown format.
 
-Follow the output format specified in the instructions above. Include:
-1. A brief overview of what the PR does
-2. A summary table of changed files
-3. Detailed findings organized by file (if any issues found)
-4. Use severity icons (🔴 🟠 🟡 🔵) and proper Markdown formatting
+**CRITICAL REQUIREMENTS**:
+1. Start IMMEDIATELY with `## 🌗 Pull Request Overview` - NO thinking or meta-commentary
+2. In the file summary table, list ALL {total_files} files shown above (not just files with issues)
+3. For deleted files, note "File deleted" in the description
+4. Use EXACTLY this text in "Reviewed Changes": "Kimi performed {review_type} on {total_files} changed files and found X issues."
 
-**IMPORTANT**: In your "Reviewed Changes" section, use EXACTLY this text:
-"Kimi performed {review_type} on {total_files} changed files and found X issues."
-(Replace X with the actual number of issues you found)
+Follow the output format specified in the instructions. Include:
+- Brief overview of what the PR does
+- Complete summary table with ALL changed files
+- Detailed findings organized by file (if any issues found)
+- Severity icons (🔴 🟠 🟡 🔵) and proper Markdown formatting
 
 Remember:
 - Only review NEW code (lines with `+` in the diff)

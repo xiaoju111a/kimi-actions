@@ -1,5 +1,5 @@
 name: 'Kimi Code Review'
-description: 'AI-powered code review using Kimi (Moonshot AI) - supports /review, /describe, /improve, /ask, /triage commands'
+description: 'AI-powered code review using Kimi (Moonshot AI) - supports /review and /ask commands'
 author: 'xiaoju111a'
 branding:
   icon: 'star'
@@ -21,7 +21,7 @@ inputs:
     required: false
     default: 'en-US'
   model:
-    description: 'Kimi model to use (kimi-k2.5, kimi-k2-turbo-preview, kimi-k2-0905-preview, kimi-k2-thinking, kimi-k2-thinking-turbo)'
+    description: 'Kimi model to use (kimi-k2.5, kimi-k2-thinking, kimi-k2-thinking-turbo)'
     required: false
     default: 'kimi-k2.5'
   review_level:
@@ -37,19 +37,7 @@ inputs:
     required: false
     default: '*.lock,*.min.js,*.min.css'
   auto_review:
-    description: 'Auto review on PR open/sync'
-    required: false
-    default: 'true'
-  auto_describe:
-    description: 'Auto generate PR description on open'
-    required: false
-    default: 'false'
-  auto_improve:
-    description: 'Auto suggest improvements on PR open/sync'
-    required: false
-    default: 'false'
-  auto_triage:
-    description: 'Auto triage issues on open (classify type and suggest labels)'
+    description: 'Auto review on PR open/sync (default: false, use /review command instead)'
     required: false
     default: 'false'
 
