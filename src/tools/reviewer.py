@@ -52,8 +52,34 @@ class Reviewer(BaseTool):
             if compressed_diff is None:
                 return "✅ No new changes since last review."
         else:
-            compressed_diff, included_chunks, excluded_chunks = self.get_diff(
-                repo_name, pr_number
+            # Get FULL diff without chunking - Agent SDK handles context
+            diff = self.github.get_pr_diff(repo_name, pr_number)
+            if not diff:
+                return "No changes to review."
+            
+            # Parse all files but don't apply token limits
+            all_chunks = self.chunker.parse_diff(diff)
+            
+            # Only exclude files based on patterns (lock files, etc.)
+            included_chunks = []
+            excluded_chunks = []
+            for chunk in all_chunks:
+                # Check if file should be excluded based on patterns
+                should_exclude = any(
+                    chunk.filename.endswith(pattern.lstrip('*'))
+                    for pattern in self.config.exclude_patterns
+                )
+                if should_exclude:
+                    excluded_chunks.append(chunk)
+                else:
+                    included_chunks.append(chunk)
+            
+            compressed_diff = self.chunker.build_diff_string(included_chunks)
+            
+            total_tokens = sum(chunk.tokens for chunk in included_chunks)
+            logger.info(
+                f"Full diff: {len(included_chunks)} files included, "
+                f"{len(excluded_chunks)} excluded, ~{total_tokens} tokens"
             )
 
         if not compressed_diff:
@@ -235,8 +261,8 @@ Follow the format shown in the instructions above.
         """Get diff only for new commits since last review."""
         last_review = self.github.get_last_bot_comment(repo_name, pr_number)
         if not last_review:
-            diff, included, excluded = self.get_diff(repo_name, pr_number)
-            return diff, included, excluded, None
+            # No previous review, return None to trigger full review
+            return None, [], [], None
 
         last_sha = last_review["sha"]
         new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
@@ -248,10 +274,29 @@ Follow the format shown in the instructions above.
         if not diff:
             return None, [], [], last_sha
 
-        included, excluded = self.chunker.chunk_diff(
-            diff, max_files=self.config.max_files
-        )
+        # Parse all files without token limits
+        all_chunks = self.chunker.parse_diff(diff)
+        
+        # Only exclude files based on patterns
+        included = []
+        excluded = []
+        for chunk in all_chunks:
+            should_exclude = any(
+                chunk.filename.endswith(pattern.lstrip('*'))
+                for pattern in self.config.exclude_patterns
+            )
+            if should_exclude:
+                excluded.append(chunk)
+            else:
+                included.append(chunk)
+        
         compressed = self.chunker.build_diff_string(included)
+        
+        total_tokens = sum(chunk.tokens for chunk in included)
+        logger.info(
+            f"Incremental diff: {len(included)} files included, "
+            f"{len(excluded)} excluded, ~{total_tokens} tokens"
+        )
         return compressed, included, excluded, last_sha
 
     def _should_use_incremental_review(self, repo_name: str, pr_number: int) -> bool:
