@@ -4,7 +4,7 @@ import asyncio
 import logging
 import tempfile
 
-from tools.base import BaseTool, DIFF_LIMIT_ASK
+from tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,9 @@ class Ask(BaseTool):
         pr = self.github.get_pr(repo_name, pr_number)
         self.load_context(repo_name, ref=pr.head.sha)
 
-        compressed_diff, _, _ = self.get_diff(repo_name, pr_number)
-        if not compressed_diff:
+        # Get full diff without chunking - Agent SDK handles context
+        diff = self.github.get_pr_diff(repo_name, pr_number)
+        if not diff:
             return "Unable to get PR changes."
 
         # Get skill
@@ -55,7 +56,7 @@ class Ask(BaseTool):
                         work_dir=work_dir,
                         pr_title=pr.title,
                         pr_body=pr.body or "",
-                        diff=compressed_diff,
+                        diff=diff,
                         question=question,
                         skill_instructions=skill_instructions,
                     )
@@ -97,7 +98,7 @@ Description: {pr_body[:2000] if pr_body else "None"}
 
 ## Code Changes
 ```diff
-{diff[:DIFF_LIMIT_ASK]}
+{diff}
 ```
 
 ## Question

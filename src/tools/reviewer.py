@@ -1,25 +1,17 @@
 """Code review tool for Kimi Actions.
 
 Uses Agent SDK with Skill-based architecture.
-Supports intelligent chunking and fallback models for large PRs.
-Supports inline comments and incremental review.
+Supports incremental review.
 """
 
 import asyncio
 import logging
 import tempfile
-from typing import List, Tuple, Optional, Dict
-import uuid
+from typing import Tuple, Optional
 
-from tools.base import BaseTool, DIFF_LIMIT_REVIEW
-from diff_chunker import DiffChunk
-from models import CodeSuggestion, SeverityLevel, ReviewOptions, SuggestionControl
-from suggestion_service import SuggestionService
+from tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
-
-# Constants
-SEVERITY_ICONS = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
 
 
 class Reviewer(BaseTool):
@@ -46,43 +38,15 @@ class Reviewer(BaseTool):
         incremental = self._should_use_incremental_review(repo_name, pr_number)
 
         if incremental:
-            compressed_diff, included_chunks, excluded_chunks, last_sha = (
-                self._get_incremental_diff(repo_name, pr_number)
-            )
-            if compressed_diff is None:
+            diff, last_sha = self._get_incremental_diff(repo_name, pr_number)
+            if diff is None:
                 return "✅ No new changes since last review."
         else:
-            # Get FULL diff without chunking - Agent SDK handles context
+            # Get full diff - Agent SDK handles everything
             diff = self.github.get_pr_diff(repo_name, pr_number)
-            if not diff:
-                return "No changes to review."
-            
-            # Parse all files but don't apply token limits
-            all_chunks = self.chunker.parse_diff(diff)
-            
-            # Only exclude files based on patterns (lock files, etc.)
-            included_chunks = []
-            excluded_chunks = []
-            for chunk in all_chunks:
-                # Check if file should be excluded based on patterns
-                should_exclude = any(
-                    chunk.filename.endswith(pattern.lstrip('*'))
-                    for pattern in self.config.exclude_patterns
-                )
-                if should_exclude:
-                    excluded_chunks.append(chunk)
-                else:
-                    included_chunks.append(chunk)
-            
-            compressed_diff = self.chunker.build_diff_string(included_chunks)
-            
-            total_tokens = sum(chunk.tokens for chunk in included_chunks)
-            logger.info(
-                f"Full diff: {len(included_chunks)} files included, "
-                f"{len(excluded_chunks)} excluded, ~{total_tokens} tokens"
-            )
+            last_sha = None
 
-        if not compressed_diff:
+        if not diff:
             return "No changes to review."
 
         skill = self.get_skill()
@@ -105,8 +69,7 @@ class Reviewer(BaseTool):
                         system_prompt=system_prompt,
                         pr_title=pr.title,
                         pr_branch=f"{pr.head.ref} -> {pr.base.ref}",
-                        diff=compressed_diff,
-                        included_chunks=included_chunks,
+                        diff=diff,
                         incremental=incremental,
                         current_sha=pr.head.sha,
                         command_quote=command_quote,
@@ -125,7 +88,7 @@ class Reviewer(BaseTool):
             response = f"{response}\n\n{self.format_footer()}"
         
         # Add SHA marker for incremental review
-        if incremental and pr.head.sha:
+        if last_sha and pr.head.sha:
             response = f"{response}\n\n<!-- kimi-review:sha={pr.head.sha[:12]} -->"
         
         return response
@@ -171,7 +134,6 @@ class Reviewer(BaseTool):
         pr_title: str,
         pr_branch: str,
         diff: str,
-        included_chunks: List[DiffChunk],
         incremental: bool,
         current_sha: str,
         command_quote: str = "",
@@ -187,14 +149,7 @@ class Reviewer(BaseTool):
         if not api_key:
             return "### 🌗 Pull request overview\n\n❌ KIMI_API_KEY is required"
 
-        # Build complete file list for context
-        file_list = []
-        for chunk in included_chunks:  # Include ALL files
-            change_type = chunk.change_type or "modified"
-            file_list.append(f"- `{chunk.filename}` ({change_type})")
-
         review_type = "incremental review" if incremental else "full review"
-        total_files = len(included_chunks)
         
         review_prompt = f"""{system_prompt}
 
@@ -202,14 +157,10 @@ class Reviewer(BaseTool):
 - **Title**: {pr_title}
 - **Branch**: {pr_branch}
 - **Review Type**: {review_type}
-- **Files Changed**: {total_files}
-
-## Changed Files
-{chr(10).join(file_list) if file_list else "No files listed"}
 
 ## Code Changes
 ```diff
-{diff[:DIFF_LIMIT_REVIEW]}
+{diff}
 ```
 
 ## Your Task
@@ -218,8 +169,8 @@ Review the code changes above and provide feedback in Markdown format.
 
 **CRITICAL REQUIREMENTS**:
 1. Start IMMEDIATELY with `## 🌗 Pull Request Overview` - NO thinking or commentary
-2. Include the file summary table with ALL {total_files} files listed above
-3. Use this exact text: "Kimi performed {review_type} on {total_files} changed files and found X issues."
+2. Include the file summary table with ALL files from the diff
+3. Use this exact text: "Kimi performed {review_type} on X changed files and found Y issues."
 4. For each issue, provide specific line numbers and code examples
 5. Put code fixes in collapsible `<details>` sections
 
@@ -257,47 +208,28 @@ Follow the format shown in the instructions above.
 
     def _get_incremental_diff(
         self, repo_name: str, pr_number: int
-    ) -> Tuple[Optional[str], List[DiffChunk], List[DiffChunk], Optional[str]]:
-        """Get diff only for new commits since last review."""
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Get diff only for new commits since last review.
+        
+        Returns:
+            Tuple of (diff, last_sha) or (None, last_sha) if no new commits
+        """
         last_review = self.github.get_last_bot_comment(repo_name, pr_number)
         if not last_review:
-            # No previous review, return None to trigger full review
-            return None, [], [], None
+            # No previous review
+            return None, None
 
         last_sha = last_review["sha"]
         new_commits = self.github.get_commits_since(repo_name, pr_number, last_sha)
         if not new_commits:
-            return None, [], [], last_sha
+            return None, last_sha
 
         commit_shas = [c.sha for c in new_commits]
         diff = self.github.get_diff_for_commits(repo_name, commit_shas)
-        if not diff:
-            return None, [], [], last_sha
-
-        # Parse all files without token limits
-        all_chunks = self.chunker.parse_diff(diff)
         
-        # Only exclude files based on patterns
-        included = []
-        excluded = []
-        for chunk in all_chunks:
-            should_exclude = any(
-                chunk.filename.endswith(pattern.lstrip('*'))
-                for pattern in self.config.exclude_patterns
-            )
-            if should_exclude:
-                excluded.append(chunk)
-            else:
-                included.append(chunk)
+        logger.info(f"Incremental diff: {len(new_commits)} new commits")
         
-        compressed = self.chunker.build_diff_string(included)
-        
-        total_tokens = sum(chunk.tokens for chunk in included)
-        logger.info(
-            f"Incremental diff: {len(included)} files included, "
-            f"{len(excluded)} excluded, ~{total_tokens} tokens"
-        )
-        return compressed, included, excluded, last_sha
+        return diff, last_sha
 
     def _should_use_incremental_review(self, repo_name: str, pr_number: int) -> bool:
         """Determine if incremental review should be used.
