@@ -133,226 +133,6 @@ class TestReviewerDiffProcessing:
         assert len(included) == 0
 
 
-class TestReviewerSuggestionParsing:
-    """Test suggestion parsing."""
-
-    def test_parse_suggestions_valid_yaml(self, mock_action_config):
-        """Test parsing valid YAML suggestions."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        response = """```yaml
-suggestions:
-  - relevant_file: "src/main.py"
-    language: "python"
-    severity: "medium"
-    label: "bug"
-    one_sentence_summary: "Unhandled exception in main function"
-    suggestion_content: "The main function does not handle exceptions properly. When an error occurs, the program crashes without proper error handling."
-    existing_code: "old code"
-    improved_code: "new code"
-    relevant_lines_start: 10
-    relevant_lines_end: 15
-```"""
-
-        suggestions = reviewer._parse_suggestions(response)
-
-        assert len(suggestions) == 1
-        assert suggestions[0].relevant_file == "src/main.py"
-        assert suggestions[0].severity.value == "medium"
-        assert suggestions[0].relevant_lines_start == 10
-
-    def test_parse_suggestions_invalid_yaml(self, mock_action_config):
-        """Test parsing invalid YAML."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        response = "not valid yaml"
-
-        suggestions = reviewer._parse_suggestions(response)
-
-        assert len(suggestions) == 0
-
-    def test_parse_suggestions_empty(self, mock_action_config):
-        """Test parsing empty suggestions."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        response = """```yaml
-suggestions: []
-```"""
-
-        suggestions = reviewer._parse_suggestions(response)
-
-        assert len(suggestions) == 0
-
-    def test_parse_suggestions_with_line_numbers(self, mock_action_config):
-        """Test parsing suggestions with line numbers."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        response = """```yaml
-suggestions:
-  - relevant_file: "test.py"
-    language: "python"
-    severity: "high"
-    label: "bug"
-    one_sentence_summary: "Null pointer exception"
-    suggestion_content: "The code does not check for null values before accessing properties. This will cause a null pointer exception."
-    existing_code: "value = obj.property"
-    improved_code: "value = obj.property if obj else None"
-    relevant_lines_start: 5
-    relevant_lines_end: 10
-```"""
-
-        suggestions = reviewer._parse_suggestions(response)
-
-        assert len(suggestions) == 1
-        assert suggestions[0].relevant_lines_start == 5
-        assert suggestions[0].relevant_lines_end == 10
-
-
-class TestReviewerInlineComments:
-    """Test inline comments functionality."""
-
-    def test_post_inline_comments_success(self, mock_action_config):
-        """Test successful inline comments posting."""
-        from tools.reviewer import Reviewer
-        from models import CodeSuggestion, SeverityLevel
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        suggestions = [
-            CodeSuggestion(
-                id="1",
-                relevant_file="test.py",
-                language="python",
-                suggestion_content="Fix this",
-                existing_code="old",
-                improved_code="new",
-                one_sentence_summary="Summary",
-                relevant_lines_start=10,
-                relevant_lines_end=15,
-                label="bug",
-                severity=SeverityLevel.MEDIUM,
-            )
-        ]
-
-        count = reviewer._post_inline_comments(
-            "owner/repo", 123, suggestions, "Summary"
-        )
-
-        assert count == 1
-        assert len(github.reviews) == 1
-        assert "```suggestion" in github.reviews[0]["comments"][0]["body"]
-
-    def test_post_inline_comments_empty(self, mock_action_config):
-        """Test posting empty suggestions."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        count = reviewer._post_inline_comments("owner/repo", 123, [], "Summary")
-
-        assert count == 0
-        assert len(github.reviews) == 0
-
-
-class TestReviewerFormatting:
-    """Test formatting methods."""
-
-    def test_format_inline_summary(self, mock_action_config):
-        """Test inline summary formatting."""
-        from tools.reviewer import Reviewer
-        from models import CodeSuggestion, SeverityLevel
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        response = """```yaml
-summary: "Good PR"
-score: 85
-file_summaries:
-  - file: "test.py"
-    description: "Added tests"
-suggestions: []
-```"""
-
-        suggestions = [
-            CodeSuggestion(
-                id="1",
-                relevant_file="test.py",
-                language="python",
-                suggestion_content="Fix this",
-                existing_code="",
-                improved_code="",
-                one_sentence_summary="Fix the bug",
-                relevant_lines_start=10,
-                relevant_lines_end=15,
-                label="bug",
-                severity=SeverityLevel.HIGH,
-            )
-        ]
-
-        summary = reviewer._format_inline_summary(
-            response, suggestions, 1, total_files=1, command_quote="/review"
-        )
-
-        assert "> /review" in summary
-        assert "Pull request overview" in summary
-        assert "Good PR" in summary
-
-    def test_format_fallback(self, mock_action_config):
-        """Test fallback formatting."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        response = """```yaml
-summary: "No issues found"
-score: 95
-suggestions: []
-```"""
-
-        result = reviewer._format_fallback(response, current_sha="abc123")
-
-        assert "No issues found" in result
-        assert "95" in result
-        assert "abc123" in result
-
-
-class TestReviewerScripts:
-    """Test system prompt building."""
-
-    def test_build_system_prompt(self, mock_action_config):
-        """Test system prompt building without script output."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        skill = Mock()
-        skill.instructions = "Review the code carefully"
-
-        prompt = reviewer._build_system_prompt(skill)
-
-        assert "Review the code carefully" in prompt
-        assert "Review Level" in prompt
-        # Agent SDK will call scripts automatically, so no script output in prompt
-        assert "Automated Check Results" not in prompt
-
-
 class TestReviewerIntegration:
     """Integration tests for Reviewer."""
 
@@ -384,7 +164,7 @@ class TestReviewerIntegration:
         assert "skill not found" in result.lower()
 
     def test_run_success_with_mock_agent(self, mock_action_config):
-        """Test successful run with mocked agent."""
+        """Test successful run with mocked agent - now returns Markdown directly."""
         from tools.reviewer import Reviewer
 
         github = MockGitHubClient()
@@ -399,26 +179,22 @@ class TestReviewerIntegration:
 
         # Mock clone_repo
         with patch.object(reviewer, "clone_repo", return_value=True):
-            # Mock asyncio.run to return YAML response
+            # Mock asyncio.run to return Markdown response
             with patch("asyncio.run") as mock_asyncio:
-                mock_asyncio.return_value = """```yaml
-summary: "Good code"
-score: 90
-file_summaries:
-  - file: "src/main.py"
-    description: "Added feature"
-suggestions:
-  - relevant_file: "src/main.py"
-    severity: "low"
-    label: "style"
-    one_sentence_summary: "Minor style issue"
-    suggestion_content: "Consider using f-strings"
-    relevant_lines_start: 5
-```"""
+                mock_asyncio.return_value = """## 🌗 Pull Request Overview
 
-                result = reviewer.run("owner/repo", 123, inline=False)
+Good code with no issues found.
 
-                assert "Good code" in result or "Pull request overview" in result
+**Reviewed Changes**
+Kimi performed full review on 1 changed files and found 0 issues.
+
+---
+
+✅ **No issues found!** The code looks good."""
+
+                result = reviewer.run("owner/repo", 123)
+
+                assert "Pull request overview" in result or "Good code" in result
 
 
 class TestReviewerIncrementalDiff:
