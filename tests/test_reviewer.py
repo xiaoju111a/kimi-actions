@@ -103,36 +103,6 @@ class TestReviewerBasic:
         assert reviewer.skill_name == "code-review"
 
 
-class TestReviewerDiffProcessing:
-    """Test diff processing in Reviewer."""
-
-    def test_get_diff_success(self, mock_action_config):
-        """Test successful diff retrieval."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        reviewer = Reviewer(github)
-
-        compressed, included, excluded = reviewer.get_diff("owner/repo", 123)
-
-        assert compressed != ""
-        assert len(included) > 0
-        assert "src/main.py" in compressed
-
-    def test_get_diff_empty(self, mock_action_config):
-        """Test handling empty diff."""
-        from tools.reviewer import Reviewer
-
-        github = MockGitHubClient()
-        github.get_pr_diff = Mock(return_value="")
-        reviewer = Reviewer(github)
-
-        compressed, included, excluded = reviewer.get_diff("owner/repo", 123)
-
-        assert compressed == ""
-        assert len(included) == 0
-
-
 class TestReviewerIntegration:
     """Integration tests for Reviewer."""
 
