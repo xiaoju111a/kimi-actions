@@ -166,6 +166,7 @@ class Reviewer(BaseTool):
             file_list.append(f"- `{chunk.filename}` ({change_type})")
 
         review_type = "incremental review" if incremental else "full review"
+        total_files = len(included_chunks)
         
         review_prompt = f"""{system_prompt}
 
@@ -173,7 +174,7 @@ class Reviewer(BaseTool):
 Title: {pr_title}
 Branch: {pr_branch}
 Review Type: {review_type}
-Files Changed: {len(included_chunks)}
+Files Changed: {total_files}
 
 {chr(10).join(file_list) if file_list else "No files listed"}
 
@@ -191,6 +192,10 @@ Follow the output format specified in the instructions above. Include:
 2. A summary table of changed files
 3. Detailed findings organized by file (if any issues found)
 4. Use severity icons (🔴 🟠 🟡 🔵) and proper Markdown formatting
+
+**IMPORTANT**: In your "Reviewed Changes" section, use EXACTLY this text:
+"Kimi performed {review_type} on {total_files} changed files and found X issues."
+(Replace X with the actual number of issues you found)
 
 Remember:
 - Only review NEW code (lines with `+` in the diff)
