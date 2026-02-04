@@ -173,10 +173,10 @@ class Reviewer(BaseTool):
         review_prompt = f"""{system_prompt}
 
 ## PR Information
-Title: {pr_title}
-Branch: {pr_branch}
-Review Type: {review_type}
-Files Changed: {total_files}
+- **Title**: {pr_title}
+- **Branch**: {pr_branch}
+- **Review Type**: {review_type}
+- **Files Changed**: {total_files}
 
 ## Changed Files
 {chr(10).join(file_list) if file_list else "No files listed"}
@@ -188,26 +188,16 @@ Files Changed: {total_files}
 
 ## Your Task
 
-Analyze the code changes and provide a comprehensive review in Markdown format.
+Review the code changes above and provide feedback in Markdown format.
 
 **CRITICAL REQUIREMENTS**:
-1. Start IMMEDIATELY with `## 🌗 Pull Request Overview` - NO thinking or meta-commentary
-2. In the file summary table, list ALL {total_files} files shown above (not just files with issues)
-3. For deleted files, note "File deleted" in the description
-4. Use EXACTLY this text in "Reviewed Changes": "Kimi performed {review_type} on {total_files} changed files and found X issues."
+1. Start IMMEDIATELY with `## 🌗 Pull Request Overview` - NO thinking or commentary
+2. Include the file summary table with ALL {total_files} files listed above
+3. Use this exact text: "Kimi performed {review_type} on {total_files} changed files and found X issues."
+4. For each issue, provide specific line numbers and code examples
+5. Put code fixes in collapsible `<details>` sections
 
-Follow the output format specified in the instructions. Include:
-- Brief overview of what the PR does
-- Complete summary table with ALL changed files
-- Detailed findings organized by file (if any issues found)
-- Severity icons (🔴 🟠 🟡 🔵) and proper Markdown formatting
-
-Remember:
-- Only review NEW code (lines with `+` in the diff)
-- Be specific with line numbers and code examples
-- Provide working fixes in collapsible sections
-- If no issues found, say so clearly
-- Use tools sparingly (10-15 calls max)
+Follow the format shown in the instructions above.
 """
 
         try:
